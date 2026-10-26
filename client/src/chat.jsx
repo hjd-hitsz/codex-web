@@ -54,6 +54,7 @@ import { actionableMessages } from "./message-actions";
 import { reasoningSummaries } from "./reasoning-summary";
 import { useSummaryTranslation } from "./use-summary-translation";
 import { conversationGroups } from "./conversation-groups";
+import { commandDescription } from "./command-description";
 import { UserInputForm } from "./user-input";
 
 function mathDelimiters(text) {
@@ -180,7 +181,7 @@ function Activity({ item }) {
           : Sparkles;
   let label = toolLabels[item.type] || item.type;
   if (item.type === "commandExecution")
-    label = item.command?.replace(/^\/usr\/bin\/zsh -lc /, "") || label;
+    label = commandDescription(item.command);
   if (item.type === "mcpToolCall")
     label = [item.server, item.tool].filter(Boolean).join(" / ");
   if (item.type === "webSearch")
@@ -190,6 +191,7 @@ function Activity({ item }) {
       <button
         className="activity-summary"
         aria-expanded={open}
+        title={item.type === "commandExecution" ? item.command : undefined}
         onClick={() => setOpen(!open)}
       >
         {working ? (
@@ -212,6 +214,9 @@ function Activity({ item }) {
         <div className="activity-body">
           {item.type === "commandExecution" ? (
             <>
+              <small>原始命令</small>
+              <pre>{item.command || "—"}</pre>
+              <small>输出</small>
               <pre>{item.aggregatedOutput || "暂无输出"}</pre>
               <small>
                 退出码 {item.exitCode ?? "—"} · {item.cwd}
