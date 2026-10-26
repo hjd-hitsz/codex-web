@@ -7,18 +7,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import WebSocket, { WebSocketServer } from "ws";
+import { readVersion } from "../src/version.mjs";
 
 test(
   "桥接服务提供资源、健康状态并隔离不同客户端的请求 ID",
   { timeout: 15000 },
   async (t) => {
     const files = await mkdtemp(join(tmpdir(), "codex-web-test-"));
+    const version = readVersion();
     await writeFile(join(files, "index.html"), "<h1>Codex Web test</h1>");
     const upstream = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(upstream, "listening");
+    let clientVersion;
     upstream.on("connection", (socket) =>
       socket.on("message", (bytes) => {
         const request = JSON.parse(bytes);
+        if (request.method === "initialize")
+          clientVersion = request.params.clientInfo.version;
         if (request.id !== undefined)
           socket.send(
             JSON.stringify({
@@ -68,6 +73,7 @@ test(
           const message = JSON.parse(bytes);
           if (message.method === "lan/state" && message.params.ready) {
             assert.equal(message.params.defaultCwd, files);
+            assert.deepEqual(message.params.version, version);
             resolve();
           }
         }),
@@ -90,7 +96,11 @@ test(
       await Promise.all([echo(first, "first"), echo(second, "second")]),
       ["first", "second"],
     );
-    assert.equal((await fetch(url + "/healthz")).status, 200);
+    const health = await fetch(url + "/healthz");
+    assert.equal(health.status, 200);
+    assert.equal(health.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await health.json(), { ready: true, version });
+    assert.equal(clientVersion, version.displayVersion);
     assert.equal(await (await fetch(url)).text(), "<h1>Codex Web test</h1>");
     await writeFile(join(files, "index.html"), "<h1>Updated build</h1>");
     assert.equal(await (await fetch(url)).text(), "<h1>Updated build</h1>");

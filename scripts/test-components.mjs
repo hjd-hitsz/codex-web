@@ -9,13 +9,23 @@ await mkdir(cache, { recursive: true });
 try {
   await build({
     stdin: {
-      contents: `export {Conversation, Composer} from './src/chat.jsx'; export {TerminalPanel} from './src/workspace.jsx'; export * from './src/store.js';`,
+      contents: `export {Conversation, Composer} from './src/chat.jsx'; export {TerminalPanel} from './src/workspace.jsx'; export {VersionDetails} from './src/version.jsx'; export * from './src/store.js';`,
       resolveDir: root + "client",
     },
     banner: {
       js: "import {createRequire} from 'node:module'; const require=createRequire(import.meta.url);",
     },
     bundle: true,
+    define: {
+      __CODEX_WEB_BUILD__: JSON.stringify({
+        version: "1.2.3",
+        displayVersion: "1.2.3+dev.gabc1234.dirty",
+        revision: "abc123456789",
+        dirty: true,
+        channel: "development",
+        builtAt: "2026-10-26T00:00:00Z",
+      }),
+    },
     platform: "node",
     format: "esm",
     outfile: cache + "/client.mjs",

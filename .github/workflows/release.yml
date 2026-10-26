@@ -20,14 +20,13 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
           cache: npm
       - name: Verify release version
-        run: |
-          node --input-type=module -e 'import assert from "node:assert/strict"; import pkg from "./package.json" with { type: "json" }; assert.equal(process.env.GITHUB_REF_NAME, `v${pkg.version}`);'
-          test -f "docs/releases/$GITHUB_REF_NAME.md"
+        run: npm run release:check
       - run: npm ci
       - run: npm run check
       - name: Package and publish

@@ -3,7 +3,13 @@ import { readConfig } from "../server/src/config.mjs";
 
 const child = spawn(
   "codex",
-  ["app-server", "--listen", readConfig().upstreamUrl],
+  [
+    "-c",
+    "thread_unload_delay_secs=0",
+    "app-server",
+    "--listen",
+    readConfig().upstreamUrl,
+  ],
   { stdio: "inherit" },
 );
 child.on("error", (error) => {

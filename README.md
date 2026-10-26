@@ -34,6 +34,8 @@ codex-web service status
 
 ```bash
 codex-web --help
+codex-web --version
+codex-web version --json
 codex-web config init
 codex-web service restart-when-idle
 ```
@@ -71,6 +73,8 @@ npm start
 
 浏览器打开 `http://电脑IP:8766`。如果本机已有 `codex-app-server.service` 监听 `127.0.0.1:8765`，直接启动网页服务即可。
 
+关闭网页后，桥接会释放该页面使用的对话订阅；运行中的任务继续执行，完成后释放。多个页面共享同一对话时，最后一个页面退出后释放。项目启动的后端使用 `thread_unload_delay_secs=0`，让空闲对话及时释放写入占用，便于切回 Codex 客户端。已有后端服务需按 [部署与维护](docs/deployment.md#对话占用与后端回收) 核对启动参数。
+
 ## 开发与检查
 
 ```bash
@@ -79,11 +83,24 @@ npm test
 npm run check
 ```
 
-`dev` 启动 Vite 开发服务器，并把 `/rpc` 和 `/healthz` 代理到网页桥接端口；开发时仍需运行桥接服务和官方后端。`test` 包含单元测试、隔离的桥接协议测试及 React 组件测试，采用模拟后端，不消耗模型额度，也不修改真实聊天。`check` 依次执行格式检查、测试、生产构建和发行包安装测试。
+`dev` 启动 Vite 开发服务器，并把 `/rpc` 和 `/healthz` 代理到网页桥接端口；开发时仍需运行桥接服务和官方后端。`test` 包含单元测试、隔离的桥接协议测试及 React 组件测试，采用模拟后端，不消耗模型额度，也不修改真实聊天。`check` 依次执行版本一致性、格式检查、测试、生产构建和发行包安装测试。
 
 `npm run test:package` 在临时 npm prefix 中全局安装打包产物，检查命令入口、静态资源、用户配置和服务生成。测试使用模拟后端与服务管理命令，不修改真实 systemd 服务；安装优先复用 npm 缓存，缺少包元数据或依赖时从配置的 registry 获取。
 
 格式化代码使用 `npm run format`。构建资源写入 `client/dist`，生产服务直接读取该目录；仅修改前端后运行 `npm run build`，刷新网页即可更新。
+
+## 版本与变更记录
+
+正式版本按发布批次管理，一次发布可以汇总多次日常提交。日常开发保持包版本，将有实际影响的变化记入 [变更日志](CHANGELOG.md) 的“未发布”；准备发布时再按整个批次选择 patch、minor 或 major，统一更新版本并创建 `vX.Y.Z` 标签。
+
+网页“设置 → 关于”、`codex-web --version` 和 `/healthz` 提供版本来源。开发构建显示类似 `2.0.0+dev.gabc1234` 的提交标识，含未提交修改时追加 `.dirty`；正式标签上的干净构建显示正式版本。网页与桥接分别显示各自的构建或进程信息，便于核对刷新与重启后的状态。npm 包保存完整提交和构建时间，安装后继续可查。
+
+```bash
+npm run version:check
+npm run version:prepare -- minor
+```
+
+`version:prepare` 同步包版本、锁文件、变更日志和安装链接，并生成待审阅的发布说明。版本选择、记录职责和发布步骤见 [版本管理](docs/versioning.md)，现有交付详情见 [v2.0.0 发布说明](docs/releases/v2.0.0.md)。
 
 ## 功能与交互
 
@@ -112,10 +129,12 @@ client/
 server/
   src/config.mjs       环境配置和默认目录
   src/server.mjs       HTTP、WebSocket 转发与终端恢复
+  src/version.mjs      正式版本与 Git / 安装包构建来源
   tests/               配置和桥接集成测试
 scripts/               后端启动、组件测试、systemd 安装
 tests/components/      隔离环境中的实际 React 组件测试
 docs/                  架构和部署维护说明
+CHANGELOG.md           未发布变更与正式版本总览
 package-lock.json      全项目依赖锁文件
 ```
 

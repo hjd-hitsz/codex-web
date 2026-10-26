@@ -379,6 +379,20 @@ p {
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
+.version-details {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.build-details {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.build-details small {
+  color: var(--muted);
+}
 .account-button {
   width: 100%;
   justify-content: flex-start;

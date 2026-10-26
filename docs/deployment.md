@@ -29,6 +29,7 @@ curl http://127.0.0.1:8766/healthz
 全局安装支持以下命令：
 
 - `codex-web` / `codex-web start`：前台运行网页桥接，连接配置中的后端。
+- `codex-web --version` / `codex-web version --json`：查看可读构建标识或完整提交与构建信息。
 - `codex-web backend`：前台运行 Codex app-server。
 - `codex-web config init`：创建用户 `.env`，保留已有文件。
 - `codex-web service install`：安装或更新服务文件，启动尚未运行的服务。
@@ -42,16 +43,17 @@ curl http://127.0.0.1:8766/healthz
 
 ## 发布 GitHub Release
 
-`.github/workflows/release.yml` 在推送 `v*` 标签时运行。流程核对标签与根 `package.json` 的版本，安装依赖并执行 `npm run check`，随后将预构建 npm 包和 SHA-256 文件上传为正式 Release。发布说明读取 `docs/releases/标签名.md`。发布权限使用仓库工作流的 `GITHUB_TOKEN`，权限范围为 `contents: write`。
+`.github/workflows/release.yml` 在推送 `v*` 标签时运行。流程执行 `npm run release:check`，核对根包、workspaces、锁文件、当前干净标签、变更日志、发布说明和安装链接，安装依赖并执行 `npm run check`，随后将带有构建来源的预构建 npm 包和 SHA-256 文件上传为正式 Release。发布说明读取 `docs/releases/标签名.md`。发布权限使用仓库工作流的 `GITHUB_TOKEN`，权限范围为 `contents: write`。
 
-发布新版本时，更新根包及 workspaces 的版本与锁文件、安装文档中的版本和下载链接，添加对应的发布说明，完成检查并提交后推送版本标签，例如：
+日常提交保持当前包版本，有实际影响的变更先记入 `CHANGELOG.md` 的“未发布”。发布时依据整个批次选择版本，执行 `npm run version:prepare -- patch`（或 `minor`、`major`、明确版本），审阅生成的发布说明，补充安装、升级或迁移信息，完成 `npm run check` 并提交。随后用实际版本替换下面的 `X.Y.Z`：
 
 ```bash
-git tag -a v2.0.0 -m "Codex Web v2.0.0"
-git push origin main v2.0.0
+git tag -a vX.Y.Z -m "Codex Web vX.Y.Z"
+npm run release:check
+git push origin main vX.Y.Z
 ```
 
-标签对应的 Release 版本应保持固定，后续改动使用新版本号。发布后检查 Actions 结果、Release 附件以及 README 安装地址，并下载附件验证校验和与全局安装。
+版本规则和完整工作流见 [版本管理](versioning.md)。标签对应的 Release 版本保持固定，后续改动积累到下一个版本。发布后检查 Actions 结果、Release 附件以及 README 安装地址，并下载附件验证校验和与全局安装。
 
 ## 配置
 
@@ -85,11 +87,13 @@ journalctl --user -u codex-lan-web.service -n 100 --no-pager
 curl http://127.0.0.1:8766/healthz
 ```
 
-`/healthz` 在桥接已连接官方后端时返回 HTTP 200 和 `{"ready":true}`；后端未连接时返回 HTTP 503。
+`/healthz` 在桥接已连接官方后端时返回 HTTP 200，后端未连接时返回 HTTP 503。响应包含 `ready` 和 `version` 对象，后者提供正式版本、可读构建标识、完整提交、工作区状态、构建通道与可用的构建时间。
 
 ## 更新和回退
 
 前端更新执行 `npm run build` 即可，服务按文件修改时间重新读取资源。桥接服务修改需要重启 `codex-lan-web.service`。终端状态和输出缓存在桥接进程内，重启前应结束网页终端并等待任务空闲。
+
+更新后在网页“设置 → 关于”分别核对网页与桥接版本，或对比 `codex-web version --json` 与 `/healthz` 的 `version`。全局命令查看磁盘中的安装包，健康接口查看实际运行的桥接进程；源码桥接的提交状态在进程启动时固定，网页来源在构建时固定。只有前端需要更新时，重新构建后刷新网页即可。
 
 安装脚本保存被覆盖的网页服务文件。默认备份目录为 `~/.local/state/codex-web/service-backups/时间戳/`；设置 `XDG_STATE_HOME` 时采用对应目录。需要回退服务路径时，恢复该文件并执行 `systemctl --user daemon-reload`，然后重启网页服务。
 
@@ -105,3 +109,17 @@ curl http://127.0.0.1:8766/healthz
 ## 故障定位
 
 网页不可访问时，先检查网页服务状态、监听端口和主机网络。网页可打开但显示后端未连接时，检查官方后端服务日志和 Codex 登录状态。摘要翻译失败时，页面会保留原文并提供重试入口；翻译与普通任务使用同一个本机 Codex 授权来源。
+
+### 对话占用与后端回收
+
+桥接按网页连接管理对话订阅。正常关闭页面会释放该连接的订阅；断网等异常断连通过 30 秒间隔的心跳在约 60 秒内识别。还有页面使用同一对话时保留订阅；已提交的任务继续执行，轮次完成后再取消最后一个订阅。
+
+Codex app-server 默认在无订阅且无活动后等待 30 分钟再卸载对话；等待期间仍会持有对话写入占用。项目的 `npm run start:backend`、`codex-web backend` 和新建后端服务均使用以下启动参数，将回收延迟设为零：
+
+```bash
+codex -c thread_unload_delay_secs=0 app-server --listen ws://127.0.0.1:8765
+```
+
+已有 `codex-app-server.service` 会保留原配置。使用 `systemctl --user cat codex-app-server.service` 检查启动命令，在原 Codex 命令中加入 `-c thread_unload_delay_secs=0`，保留原可执行路径、代理、登录环境和监听地址。Codex CLI 0.162.1 的临时会话验证表明，该参数需要在后端启动时生效，单独覆盖 `thread/resume.config` 中的配置仍会保留对话。
+
+调整已有后端时，先确认后端中所有已加载对话均空闲，网页终端和对话后台终端均已结束，再重启后端与网页服务。`service restart-when-idle` 只检查网页桥接观察到的任务和网页终端；后端还有其他连接时需一并检查。重启清除旧桥接遗留的空闲订阅，新连接按上述规则自动释放。[官方协议文档](https://learn.chatgpt.com/docs/app-server#unsubscribe-from-a-loaded-thread) 说明了取消订阅与延迟卸载的关系。

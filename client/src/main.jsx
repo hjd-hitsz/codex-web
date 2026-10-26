@@ -72,6 +72,7 @@ import {
 } from "./workspace";
 import "./style.css";
 import { projectGroups, threadTime } from "./thread-order";
+import { VersionDetails } from "./version";
 
 function ThreadMenu({ thread, onClose }) {
   const s = useStore();
@@ -658,8 +659,9 @@ function SettingsDialog() {
         </span>
       </div>
       <h3>关于</h3>
+      <VersionDetails />
       <p className="section-description">
-        Codex Web 2.0 · 自建网页客户端
+        Codex Web · 自建网页客户端
         <br />
         连接本机官方 codex
         app-server，使用本机账户、项目文件和会话历史。桌面专属的自动化调度、内置浏览器与桌面控制目前由桌面客户端提供。

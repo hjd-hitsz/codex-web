@@ -29,6 +29,7 @@ export const b64encode = (text) => {
 let state = {
   connected: false,
   booting: true,
+  serverVersion: null,
   threads: [],
   threadCursor: null,
   archived: false,
@@ -144,6 +145,7 @@ function connect() {
           ? { cwd: m.params.defaultCwd }
           : {}),
         connected: m.params.ready,
+        serverVersion: m.params.version || null,
         active: m.params.activeTurns,
         questions: m.params.questions,
         terminals: m.params.terminals || {},

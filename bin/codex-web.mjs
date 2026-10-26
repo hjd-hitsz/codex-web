@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { constants } from "node:fs";
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
 import { readConfig } from "../server/src/config.mjs";
+import { readVersion } from "../server/src/version.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const configDir = resolve(
@@ -33,7 +34,8 @@ async function main() {
   service stop               停止网页服务
   service restart            重启网页服务
   service restart-when-idle   等待任务与终端空闲后重启网页服务
-  --version                  显示版本
+  --version                  显示版本与开发构建标识
+  version --json             显示完整版本、提交和构建信息
 
 配置目录：${configDir}
 可用 CODEX_WEB_CONFIG_DIR 指定配置目录。
@@ -41,8 +43,11 @@ async function main() {
     return;
   }
   if (["--version", "-v"].includes(command)) {
-    const { version } = JSON.parse(await readFile(join(root, "package.json")));
-    console.log(version);
+    console.log(readVersion().displayVersion);
+    return;
+  }
+  if (command === "version --json") {
+    console.log(JSON.stringify(readVersion(), null, 2));
     return;
   }
   if (

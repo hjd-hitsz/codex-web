@@ -1,9 +1,21 @@
 import { defineConfig, loadEnv } from "vite";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, fileURLToPath(new URL("..", import.meta.url)), "");
+import { readVersion } from "../server/src/version.mjs";
+
+export default defineConfig(({ mode, command }) => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const env = loadEnv(mode, root, "");
   const target = `http://127.0.0.1:${env.PORT || 8766}`;
+  const buildInfo = { ...readVersion(root), builtAt: new Date().toISOString() };
+  if (command === "build")
+    writeFileSync(
+      join(root, "build-info.json"),
+      JSON.stringify(buildInfo, null, 2) + "\n",
+    );
   return {
+    define: { __CODEX_WEB_BUILD__: JSON.stringify(buildInfo) },
     server: { proxy: { "/rpc": { target, ws: true }, "/healthz": { target } } },
     build: {
       assetsInlineLimit: Infinity,

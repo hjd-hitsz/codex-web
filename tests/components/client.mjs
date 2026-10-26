@@ -45,6 +45,33 @@ localStorage.setItem(
 const app = await import(
   pathToFileURL(process.env.CODEX_COMPONENT_BUNDLE).href
 );
+let versionView;
+await act(async () => {
+  versionView = create(React.createElement(app.VersionDetails));
+});
+assert(
+  JSON.stringify(versionView.toJSON()).includes("1.2.3+dev.gabc1234.dirty"),
+);
+assert(JSON.stringify(versionView.toJSON()).includes("等待连接"));
+await act(async () => {
+  app.set({
+    serverVersion: {
+      version: "1.2.2",
+      displayVersion: "1.2.2",
+      revision: "def123456789",
+      dirty: false,
+      channel: "release",
+      builtAt: null,
+    },
+  });
+});
+const versionText = JSON.stringify(versionView.toJSON());
+assert(versionText.includes("正式发布"));
+assert(versionText.includes("def123456789"));
+assert(versionText.includes("含未提交修改"));
+assert(versionText.includes("1.2.3+dev.gabc1234.dirty"));
+await act(async () => versionView.unmount());
+console.log("PASS 网页和桥接独立版本、构建来源与未连接状态");
 app.set({
   connected: true,
   current: { id: "fixture" },

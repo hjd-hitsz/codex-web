@@ -51,7 +51,7 @@ Type=simple
 WorkingDirectory=${unitPath(homedir())}
 Environment=${quote("PATH=" + dirname(process.execPath) + ":" + process.env.PATH)}
 EnvironmentFile=-${unitPath(join(configDir, ".env.backend"))}
-ExecStart=${quote(codex)} app-server --listen ${quote(config.upstreamUrl)}
+ExecStart=${quote(codex)} -c thread_unload_delay_secs=0 app-server --listen ${quote(config.upstreamUrl)}
 Restart=on-failure
 RestartSec=5
 UMask=0077

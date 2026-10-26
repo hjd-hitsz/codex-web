@@ -30,6 +30,9 @@ test(
       "client/dist/index.html",
       "client/dist/app.js",
       "client/dist/style.css",
+      "build-info.json",
+      "server/src/version.mjs",
+      "CHANGELOG.md",
       ".env.example",
     ])
       assert.ok(paths.includes(path), `安装包缺少 ${path}`);
@@ -78,7 +81,15 @@ test(
         stdio: "pipe",
       });
     assert.match(run("--help"), /service install/);
-    assert.equal(run("--version").trim(), pack.version);
+    const version = JSON.parse(run("version", "--json"));
+    assert.equal(version.version, pack.version);
+    assert.equal(run("--version").trim(), version.displayVersion);
+    assert.deepEqual(
+      version,
+      JSON.parse(await readFile(join(root, "build-info.json"))),
+    );
+    assert.ok(Object.hasOwn(version, "revision"));
+    assert.ok(version.builtAt);
     assert.throws(() => run("invalid"), /未知命令/);
     run("config", "init");
 
@@ -130,9 +141,11 @@ test(
       }
       await delay(20);
     }
-    assert.deepEqual(initialized, { ready: true });
+    assert.deepEqual(initialized, { ready: true, version });
     assert.match(await (await fetch(url)).text(), /<html/);
-    assert.equal((await fetch(url + "/app.js")).status, 200);
+    const script = await fetch(url + "/app.js");
+    assert.equal(script.status, 200);
+    assert.ok((await script.text()).includes(version.displayVersion));
     assert.equal((await fetch(url + "/style.css")).status, 200);
 
     const fakeBin = join(dir, "fake-bin");
@@ -159,6 +172,8 @@ test(
     const backend = await readFile(backendPath, "utf8");
     assert.ok(backend.includes(`ws://127.0.0.1:${upstream.address().port}`));
     assert.ok(backend.includes(join(fakeBin, "codex")));
+    assert.match(backend, /-c thread_unload_delay_secs=0 app-server/);
+    run("backend");
     await writeFile(backendPath, "# existing backend configuration\n");
     run("service", "install");
     assert.equal(
@@ -168,6 +183,7 @@ test(
     assert.equal(await readFile(join(configDir, ".env"), "utf8"), config);
     run("service", "status");
     const log = await readFile(env.SERVICE_TEST_LOG, "utf8");
+    assert.match(log, /-c thread_unload_delay_secs=0 app-server --listen/);
     assert.match(
       log,
       /--user enable --now codex-app-server.service codex-lan-web.service/,
