@@ -127,10 +127,24 @@ export function rpc(method, params = {}, timeout = 120000) {
   });
 }
 export function respond(request, result, error) {
-  socket.send(
-    JSON.stringify({ id: request.id, ...(error ? { error } : { result }) }),
-  );
-  set({ questions: state.questions.filter((q) => q.id !== request.id) });
+  try {
+    if (!state.connected || socket.readyState !== WebSocket.OPEN)
+      throw new Error("连接尚未就绪，请等待重连后提交回答。");
+    if (!state.questions.some((q) => String(q.id) === String(request.id)))
+      throw new Error("此请求已结束，请查看最新消息。");
+    socket.send(
+      JSON.stringify({ id: request.id, ...(error ? { error } : { result }) }),
+    );
+    set({
+      questions: state.questions.filter(
+        (q) => String(q.id) !== String(request.id),
+      ),
+    });
+    return true;
+  } catch (error) {
+    report(error);
+    return false;
+  }
 }
 function connect() {
   socket = new WebSocket(
@@ -167,7 +181,12 @@ function connect() {
       return;
     }
     if (m.id !== undefined && m.method) {
-      set({ questions: [...state.questions.filter((q) => q.id !== m.id), m] });
+      set({
+        questions: [
+          ...state.questions.filter((q) => String(q.id) !== String(m.id)),
+          m,
+        ],
+      });
       return;
     }
     handle(m);
@@ -396,9 +415,13 @@ function handle({ method, params: p = {} }) {
     });
     closeTerminal(p.processId);
   }
-  if (method === "lan/questionResolved") {
+  if (
+    method === "lan/questionResolved" ||
+    method === "serverRequest/resolved"
+  ) {
+    const id = method === "serverRequest/resolved" ? p.requestId : p.id;
     set({
-      questions: state.questions.filter((q) => String(q.id) !== String(p.id)),
+      questions: state.questions.filter((q) => String(q.id) !== String(id)),
     });
     return;
   }
@@ -500,8 +523,9 @@ export async function ensureThread() {
 export async function sendMessage(
   text = state.draft,
   attachments = state.attachments,
+  { clearDraft = true } = {},
 ) {
-  if ((!text.trim() && !attachments.length) || state.busy) return;
+  if ((!text.trim() && !attachments.length) || state.busy) return false;
   set({ busy: true, error: "" });
   try {
     const thread = await ensureThread();
@@ -535,16 +559,18 @@ export async function sendMessage(
         ? { threadId: thread.id, expectedTurnId: running, input }
         : params,
     );
-    if (state.current?.id === thread.id) {
+    if (clearDraft && state.current?.id === thread.id) {
       setDraft("");
       set({ attachments: [] });
     }
     if (r.turn?.status === "inProgress")
       set({ active: { ...state.active, [thread.id]: r.turn.id } });
     loadThreads().catch(() => {});
+    return true;
   } catch (e) {
     set({ items: state.items.filter((i) => !i.optimistic) });
     report(e);
+    return false;
   } finally {
     set({ busy: false });
   }

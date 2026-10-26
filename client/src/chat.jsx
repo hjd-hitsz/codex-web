@@ -54,6 +54,7 @@ import { actionableMessages } from "./message-actions";
 import { reasoningSummaries } from "./reasoning-summary";
 import { useSummaryTranslation } from "./use-summary-translation";
 import { conversationGroups } from "./conversation-groups";
+import { UserInputForm } from "./user-input";
 
 function mathDelimiters(text) {
   return (text || "")
@@ -317,6 +318,13 @@ function ReasoningPart({ title, body }) {
 }
 function Message({ item, showActions }) {
   if (item.type === "reasoning") return <Reasoning item={item} />;
+  if (item.type === "agentMessage" && item.questions?.length)
+    return (
+      <article className="message assistant-message">
+        {item.text?.trim() && <RichText text={item.text} />}
+        <AsyncQuestion item={item} />
+      </article>
+    );
   if (item.type === "agentMessage" && item.phase === "commentary")
     return item.text?.trim() ? (
       <article className="message process-message">
@@ -380,63 +388,69 @@ function Message({ item, showActions }) {
     );
   return <Activity item={item} />;
 }
+function AsyncQuestion({ item }) {
+  const s = useStore();
+  const index = s.items.findIndex((entry) => entry.id === item.id);
+  const answered = s.items.slice(index + 1).some((entry) => {
+    if (entry.type !== "userMessage" || entry.optimistic) return false;
+    const text = (entry.content || [])
+      .filter((content) => content.type === "text")
+      .map((content) => content.text)
+      .join("\n");
+    return item.questions.every((question) =>
+      text.includes(`${question.title}\n回答：`),
+    );
+  });
+  if (answered)
+    return (
+      <div className="request-card historical-questions">
+        <div className="request-title">
+          <MessageSquare size={18} />
+          提问
+        </div>
+        {item.questions.map((question, index) => (
+          <p key={index}>{question.title}</p>
+        ))}
+        <small className="request-hint">回答已发送，可在消息框继续补充。</small>
+      </div>
+    );
+  return (
+    <UserInputForm
+      questions={item.questions.map((question, index) => ({
+        id: String(index),
+        header: `问题 ${index + 1}`,
+        question: question.title,
+        options: question.options?.map((label) => ({ label })),
+      }))}
+      isBlocking={false}
+      disabled={!s.connected || s.busy}
+      onSubmit={(answers) =>
+        sendMessage(
+          item.questions
+            .map(
+              (question, index) =>
+                `${question.title}\n回答：${answers[index].answers[0]}`,
+            )
+            .join("\n\n"),
+          [],
+          { clearDraft: false },
+        )
+      }
+    />
+  );
+}
 function Question({ request }) {
-  const [answers, update] = useState({}),
+  const s = useStore(),
     p = request.params;
   const input = request.method === "item/tool/requestUserInput";
   if (input)
     return (
-      <div className="request-card">
-        <div className="request-title">
-          <MessageSquare size={18} />
-          需要你的选择
-        </div>
-        {p.questions.map((q) => (
-          <div className="question" key={q.id}>
-            <strong>{q.header}</strong>
-            <p>{q.question}</p>
-            {q.options?.map((o) => (
-              <label
-                className={
-                  "answer-option " +
-                  (answers[q.id] === o.label ? "selected" : "")
-                }
-                key={o.label}
-              >
-                <input
-                  type="radio"
-                  name={q.id}
-                  checked={answers[q.id] === o.label}
-                  onChange={() => update({ ...answers, [q.id]: o.label })}
-                />
-                <span>
-                  <b>{o.label}</b>
-                  <small>{o.description}</small>
-                </span>
-              </label>
-            ))}
-            <input
-              className="free-answer"
-              placeholder="输入你的回答"
-              value={answers[q.id] || ""}
-              onChange={(e) => update({ ...answers, [q.id]: e.target.value })}
-            />
-          </div>
-        ))}
-        <button
-          className="primary"
-          disabled={p.questions.some((q) => !answers[q.id]?.trim())}
-          onClick={() =>
-            respond(request, {
-              answers: Object.fromEntries(
-                p.questions.map((q) => [q.id, { answers: [answers[q.id]] }]),
-              ),
-            })
-          }
-        >
-          提交回答
-        </button>
-      </div>
+      <UserInputForm
+        questions={p.questions}
+        isBlocking={p.isBlocking}
+        disabled={!s.connected}
+        onSubmit={(answers) => respond(request, { answers })}
+      />
     );
   const permission = request.method === "item/permissions/requestApproval";
   const standard = [

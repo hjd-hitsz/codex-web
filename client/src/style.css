@@ -993,16 +993,39 @@ p {
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
+  align-items: center;
+}
+.request-hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.user-input-card > .request-hint {
+  margin: -6px 0 16px;
+}
+.user-input-card .request-actions > .request-hint {
+  margin-right: auto;
+}
+.user-input-card [role="alert"] {
+  color: var(--red);
+  font-size: 12px;
 }
 .question {
-  margin-bottom: 20px;
+  border: 0;
+  padding: 0;
+  margin: 0 0 20px;
+  min-width: 0;
 }
-.question > strong {
+.question > legend {
   font-size: 11px;
   color: var(--muted);
+  padding: 0;
 }
-.question > p {
+.question > p,
+.historical-questions > p {
   margin: 6px 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .answer-option {
   display: flex;
@@ -1019,6 +1042,11 @@ p {
 }
 .answer-option input {
   margin: 3px 0;
+  flex: none;
+}
+.answer-option > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .answer-option b {
   font-weight: 500;
@@ -1037,6 +1065,13 @@ p {
   border-radius: 7px;
   padding: 10px;
   margin-top: 5px;
+  resize: vertical;
+}
+.answer-label {
+  display: block;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
 }
 .composer-wrap {
   flex: none;

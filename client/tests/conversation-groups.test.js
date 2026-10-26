@@ -66,3 +66,21 @@ test("旧消息缺少阶段字段时，末尾回复保留为正文", () => {
 test("生成中的进度和工具依然位于一个折叠区域", () => {
   assert.equal(conversationGroups([progress, tool, thought]).length, 1);
 });
+test("异步提问保持展开，空正文和后续进度均保留问题卡片", () => {
+  const question = item("question", "agentMessage", {
+    phase: "commentary",
+    text: "",
+    questions: [{ title: "选择部署方式", options: ["源码", "npm"] }],
+  });
+  const groups = conversationGroups([
+    progress,
+    question,
+    tool,
+    { ...answer, id: "next-answer" },
+  ]);
+  assert.deepEqual(
+    groups.map((group) => group.type),
+    ["process", "message", "process", "message"],
+  );
+  assert.equal(groups[1].item, question);
+});

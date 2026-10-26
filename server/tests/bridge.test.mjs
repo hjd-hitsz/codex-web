@@ -9,8 +9,20 @@ import { fileURLToPath } from "node:url";
 import WebSocket, { WebSocketServer } from "ws";
 import { readVersion } from "../src/version.mjs";
 
+function messageFrom(socket, matches) {
+  return new Promise((resolve) => {
+    function receive(bytes) {
+      const message = JSON.parse(bytes);
+      if (!matches(message)) return;
+      socket.off("message", receive);
+      resolve(message);
+    }
+    socket.on("message", receive);
+  });
+}
+
 test(
-  "桥接服务提供资源、健康状态并隔离不同客户端的请求 ID",
+  "桥接服务提供资源、隔离请求 ID，并恢复和同步提问状态",
   { timeout: 15000 },
   async (t) => {
     const files = await mkdtemp(join(tmpdir(), "codex-web-test-"));
@@ -18,10 +30,16 @@ test(
     await writeFile(join(files, "index.html"), "<h1>Codex Web test</h1>");
     const upstream = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(upstream, "listening");
-    let clientVersion;
-    upstream.on("connection", (socket) =>
+    let clientVersion, backend;
+    const answers = [];
+    upstream.on("connection", (socket) => {
+      backend = socket;
       socket.on("message", (bytes) => {
         const request = JSON.parse(bytes);
+        if (!request.method) {
+          answers.push(request);
+          return;
+        }
         if (request.method === "initialize")
           clientVersion = request.params.clientInfo.version;
         if (request.id !== undefined)
@@ -31,8 +49,8 @@ test(
               result: request.method === "initialize" ? {} : request.params,
             }),
           );
-      }),
-    );
+      });
+    });
     const child = spawn(
       process.execPath,
       [fileURLToPath(new URL("../src/server.mjs", import.meta.url))],
@@ -65,7 +83,7 @@ test(
         if (match) resolve(match[0]);
       });
     });
-    async function connect() {
+    async function connect(onState = () => {}) {
       const socket = new WebSocket(url.replace("http:", "ws:") + "/rpc");
       sockets.push(socket);
       await new Promise((resolve) =>
@@ -74,6 +92,7 @@ test(
           if (message.method === "lan/state" && message.params.ready) {
             assert.equal(message.params.defaultCwd, files);
             assert.deepEqual(message.params.version, version);
+            onState(message.params);
             resolve();
           }
         }),
@@ -105,5 +124,69 @@ test(
     await writeFile(join(files, "index.html"), "<h1>Updated build</h1>");
     assert.equal(await (await fetch(url)).text(), "<h1>Updated build</h1>");
     assert.equal((await fetch(url + "/missing")).status, 404);
+
+    const question = {
+      id: "pending-question",
+      method: "item/tool/requestUserInput",
+      params: {
+        threadId: "fixture-thread",
+        turnId: "fixture-turn",
+        itemId: "fixture-item",
+        isBlocking: false,
+        autoResolutionMs: null,
+        questions: [
+          {
+            id: "deployment",
+            header: "部署方式",
+            question: "如何部署？",
+            isOther: true,
+            isSecret: false,
+            options: [{ label: "npm", description: "安装预构建包" }],
+          },
+        ],
+      },
+    };
+    const firstQuestion = messageFrom(first, (m) => m.id === question.id);
+    const secondQuestion = messageFrom(second, (m) => m.id === question.id);
+    backend.send(JSON.stringify(question));
+    assert.deepEqual(await firstQuestion, question);
+    assert.deepEqual(await secondQuestion, question);
+    let restored;
+    const reconnected = await connect((state) => (restored = state.questions));
+    assert.deepEqual(restored, [question]);
+
+    const result = { answers: { deployment: { answers: ["容器部署"] } } };
+    const answer = messageFrom(
+      backend,
+      (m) => m.id === question.id && !m.method,
+    );
+    const resolved = [first, second, reconnected].map((socket) =>
+      messageFrom(socket, (m) => m.method === "lan/questionResolved"),
+    );
+    first.send(JSON.stringify({ id: question.id, result }));
+    assert.deepEqual(await answer, { id: question.id, result });
+    for (const message of await Promise.all(resolved))
+      assert.deepEqual(message.params, { id: question.id });
+    second.send(JSON.stringify({ id: question.id, result }));
+    await echo(second, "barrier");
+    assert.equal(answers.length, 1);
+    await connect((state) => assert.deepEqual(state.questions, []));
+
+    const expired = { ...question, id: 37 };
+    const pending = messageFrom(first, (m) => m.id === expired.id);
+    backend.send(JSON.stringify(expired));
+    await pending;
+    const cleared = messageFrom(
+      first,
+      (m) => m.method === "serverRequest/resolved",
+    );
+    backend.send(
+      JSON.stringify({
+        method: "serverRequest/resolved",
+        params: { threadId: "fixture-thread", requestId: "37" },
+      }),
+    );
+    await cleared;
+    await connect((state) => assert.deepEqual(state.questions, []));
   },
 );
