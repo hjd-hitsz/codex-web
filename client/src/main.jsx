@@ -118,6 +118,7 @@ function ThreadMenu({ thread, onClose }) {
 function ThreadRow({ thread }) {
   const s = useStore(),
     [menu, show] = useState(false);
+  const archiveLabel = s.archived ? "恢复对话" : "归档对话";
   const now = Date.now() / 1000,
     diff = now - threadTime(thread);
   const date =
@@ -152,13 +153,21 @@ function ThreadRow({ thread }) {
           {date}
         </small>
       </button>
-      <button
-        className="thread-more"
-        aria-label={"管理对话 " + titleOf(thread)}
-        onClick={() => show(!menu)}
-      >
-        <MoreHorizontal size={15} />
-      </button>
+      <div className="thread-actions">
+        <button
+          title={archiveLabel}
+          aria-label={archiveLabel + " " + titleOf(thread)}
+          onClick={() => archive(thread).catch(report)}
+        >
+          {s.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+        </button>
+        <button
+          aria-label={"管理对话 " + titleOf(thread)}
+          onClick={() => show(!menu)}
+        >
+          <MoreHorizontal size={15} />
+        </button>
+      </div>
       {menu && (
         <>
           <div className="click-away" onClick={() => show(false)} />
