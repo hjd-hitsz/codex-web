@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import React, { act } from "react";
 import { create } from "react-test-renderer";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -276,6 +277,63 @@ await act(async () => view.unmount());
 console.log(
   "PASS 工作过程整体折叠及展开、最终回答独立、中文摘要标题、空摘要隐藏、标题无展开",
 );
+{
+  const originalFetch = globalThis.fetch;
+  const batches = [];
+  const requestCount = requests.length;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "https://transmart.qq.com/api/imt");
+    const texts = JSON.parse(options.body).source.text_list;
+    batches.push(texts);
+    return new Response(
+      JSON.stringify({
+        header: { ret_code: "succ" },
+        auto_translation: texts.map((text) =>
+          text === "Reviewing local configuration"
+            ? "检查本地配置"
+            : "检查应用设置",
+        ),
+      }),
+    );
+  };
+  app.set({
+    items: [
+      {
+        id: "machine-translation",
+        type: "reasoning",
+        summary: [
+          "Reviewing local configuration\nInspecting application settings",
+        ],
+      },
+    ],
+  });
+  await act(async () => {
+    view = create(React.createElement(app.Conversation));
+  });
+  await act(async () =>
+    view.root
+      .findByProps({ className: "process-group" })
+      .props.onToggle({ currentTarget: { open: true } }),
+  );
+  await act(async () => delay(1400));
+  assert.deepEqual(batches, [["Reviewing local configuration"]]);
+  assert(JSON.stringify(view.toJSON()).includes("检查本地配置"));
+  await act(async () =>
+    view.root
+      .findByProps({ className: "activity reasoning-summary" })
+      .props.onToggle({ currentTarget: { open: true } }),
+  );
+  await act(async () => delay(1400));
+  assert.deepEqual(batches, [
+    ["Reviewing local configuration"],
+    ["Inspecting application settings"],
+  ]);
+  assert(JSON.stringify(view.toJSON()).includes("检查应用设置"));
+  assert.equal(requests.length, requestCount);
+  await act(async () => view.unmount());
+  globalThis.fetch = originalFetch;
+  console.log("PASS 思考标题与正文按需调用机器翻译，翻译过程不发送 Codex 请求");
+}
 app.set({ draft: "键盘发送验证", items: [] });
 await act(async () => {
   view = create(React.createElement(app.Composer));

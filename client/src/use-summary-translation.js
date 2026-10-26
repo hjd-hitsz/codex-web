@@ -1,17 +1,13 @@
 import { useEffect, useState } from "react";
-import { get, rpc, onEvent } from "./store";
 import {
   createSummaryTranslator,
-  translateWithCodex,
+  translateWithTransmart,
 } from "./summary-translator";
 
-const translator = createSummaryTranslator((texts) => {
-  const state = get();
-  const model =
-    state.models.find((entry) => entry.model === "gpt-6-luna")?.model ||
-    state.model;
-  return translateWithCodex(texts, { rpc, onEvent, model, cwd: state.cwd });
-}, localStorage);
+const translator = createSummaryTranslator(
+  translateWithTransmart,
+  localStorage,
+);
 
 export function useSummaryTranslation(text, enabled = true) {
   const [result, setResult] = useState({}),
