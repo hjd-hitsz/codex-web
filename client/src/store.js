@@ -562,6 +562,8 @@ export async function ensureThread() {
   });
   if (epoch !== opening)
     throw new Error("对话已切换，请在当前对话重新发送消息。");
+  localStorage.setItem("cx-draft-" + r.thread.id, state.draft);
+  localStorage.removeItem("cx-draft-new");
   set({ current: r.thread });
   localStorage.setItem("cx-current", r.thread.id);
   return r.thread;
@@ -605,9 +607,15 @@ export async function sendMessage(
         ? { threadId: thread.id, expectedTurnId: running, input }
         : params,
     );
-    if (clearDraft && state.current?.id === thread.id) {
-      setDraft("");
-      set({ attachments: [] });
+    if (clearDraft) {
+      const draftKey = "cx-draft-" + thread.id;
+      if (localStorage.getItem(draftKey) === text)
+        localStorage.removeItem(draftKey);
+      if (state.current?.id === thread.id)
+        set({
+          ...(state.draft === text ? { draft: "" } : {}),
+          attachments: [],
+        });
     }
     if (r.turn?.status === "inProgress")
       set({ active: { ...state.active, [thread.id]: r.turn.id } });

@@ -144,11 +144,15 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
     startCount,
   );
   assert.equal(app.get().draft, "创建无项目对话");
+  assert.equal(localStorage.getItem("cx-draft-new"), "创建无项目对话");
   prepareFails = false;
   assert.equal(await app.sendMessage(), false);
   assert.equal(app.get().projectlessCwd, thread.cwd);
+  assert.equal(localStorage.getItem("cx-draft-new"), "创建无项目对话");
   startFails = false;
   assert.equal(await app.sendMessage(), true);
+  assert.equal(app.get().draft, "");
+  assert.equal(localStorage.getItem("cx-draft-new"), null);
   assert.equal(preparations, 2);
   const start = requests.findLast((r) => r.method === "thread/start");
   assert.equal(start.params.cwd, thread.cwd);
@@ -171,6 +175,7 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
     "",
   );
   app.newChat();
+  assert.equal(app.get().draft, "");
   assert.equal(app.get().projectless, true);
   assert.equal(app.get().projectlessCwd, null);
   app.newChat("/code/x");
@@ -179,6 +184,80 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
   requests.length = 0;
   console.log(
     "PASS 未分类新建的独立目录、失败重试与草稿保留、统一权限、重新加载归类及新建上下文",
+  );
+}
+{
+  const thread = { id: "draft-thread", cwd: "/code/x", createdAt: 1 };
+  let turnFails = true;
+  let onSend = () => {};
+  responseFor = ({ method }) => {
+    if (method === "thread/start" || method === "thread/resume")
+      return { thread, cwd: thread.cwd };
+    if (method === "thread/list") return { data: [thread] };
+    if (method === "thread/turns/list" || method === "thread/items/list")
+      return { data: [] };
+    if (method === "lan/projectless/read") return { directories: {} };
+    if (method === "turn/start") {
+      onSend();
+      return turnFails ? { error: { message: "消息发送失败" } } : {};
+    }
+    return {};
+  };
+  app.newChat(thread.cwd);
+  app.setDraft("尚未发送的首条消息");
+  app.newChat();
+  assert.equal(app.get().draft, "尚未发送的首条消息");
+  assert.equal(await app.sendMessage(), false);
+  assert.equal(app.get().current.id, thread.id);
+  assert.equal(app.get().draft, "尚未发送的首条消息");
+  assert.equal(localStorage.getItem("cx-draft-new"), null);
+  assert.equal(
+    localStorage.getItem("cx-draft-" + thread.id),
+    "尚未发送的首条消息",
+  );
+  app.newChat();
+  assert.equal(app.get().draft, "");
+  await app.openThread(thread.id);
+  assert.equal(app.get().draft, "尚未发送的首条消息");
+  turnFails = false;
+  assert.equal(await app.sendMessage(), true);
+  assert.equal(app.get().draft, "");
+  assert.equal(localStorage.getItem("cx-draft-" + thread.id), null);
+  app.newChat();
+  assert.equal(app.get().draft, "");
+  await app.openThread(thread.id);
+  assert.equal(app.get().draft, "");
+
+  app.setDraft("发送后切换对话");
+  onSend = () => {
+    app.newChat();
+    app.setDraft("新对话中的未发送草稿");
+  };
+  assert.equal(await app.sendMessage(), true);
+  assert.equal(app.get().draft, "新对话中的未发送草稿");
+  assert.equal(localStorage.getItem("cx-draft-" + thread.id), null);
+  await app.openThread(thread.id);
+  assert.equal(app.get().draft, "");
+
+  app.setDraft("发送时继续编辑");
+  onSend = () => app.setDraft("等待期间输入的下一条草稿");
+  assert.equal(await app.sendMessage(), true);
+  assert.equal(app.get().draft, "等待期间输入的下一条草稿");
+  assert.equal(
+    localStorage.getItem("cx-draft-" + thread.id),
+    "等待期间输入的下一条草稿",
+  );
+  app.newChat();
+  assert.equal(app.get().draft, "新对话中的未发送草稿");
+  await app.openThread(thread.id);
+  assert.equal(app.get().draft, "等待期间输入的下一条草稿");
+  app.newChat();
+  app.setDraft("");
+  app.set({ threads: [], active: {}, error: "", items: [] });
+  responseFor = (m) => (m.method === "thread/list" ? { data: [] } : {});
+  requests.length = 0;
+  console.log(
+    "PASS 新对话保留未发送草稿、创建后草稿归属、发送失败恢复、成功清理及等待期间的切换和编辑",
   );
 }
 let versionView;
