@@ -6,7 +6,7 @@
 
 全局 npm 命令入口为 `bin/codex-web.mjs`。发行包由根 `package.json` 的 `files` 白名单控制，`prepack` 构建前端。全局安装的配置放在用户配置目录，与 npm 包分离；源码运行继续读取项目根 `.env`。修改安装和分发逻辑时维护两种运行方式，保留已有 Codex 后端服务及用户配置。
 
-GitHub Release 由 `.github/workflows/release.yml` 在推送版本标签后检查并发布，附件包含预构建 npm 包和 SHA-256 文件。版本标签必须匹配根包版本，并提供 `docs/releases/标签名.md`；发布时同步维护 README 和部署文档的下载链接，验证发布附件可安装。
+GitHub Release 由 `.github/workflows/release.yml` 在推送版本标签后检查并发布，附件包含预构建 npm 包和 SHA-256 文件。版本标签必须匹配根包版本，并提供 `docs/releases/标签名.md`；发布页每项变更在末尾括号内标注对应提交及链接。发布时同步维护 README 和部署文档的下载链接，验证发布附件可安装。
 
 版本按发布批次管理，日常提交保持包版本，有实际影响的变化记入 `CHANGELOG.md` 的“未发布”。准备发布时使用 `npm run version:prepare -- patch|minor|major|X.Y.Z` 同步版本、锁文件、变更记录与安装链接，审阅生成的发布说明后检查并提交。创建匹配版本的干净标签后执行 `npm run release:check`，通过后推送；完整规则见 `docs/versioning.md`。
 
