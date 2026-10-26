@@ -43,6 +43,7 @@ import {
   newChat,
   openThread,
   loadThreads,
+  listThreads,
   rename,
   archive,
   deleteThread,
@@ -70,6 +71,7 @@ import {
   TerminalPanel,
 } from "./workspace";
 import "./style.css";
+import { projectGroups, threadTime } from "./thread-order";
 
 function ThreadMenu({ thread, onClose }) {
   const s = useStore();
@@ -117,13 +119,13 @@ function ThreadRow({ thread }) {
   const s = useStore(),
     [menu, show] = useState(false);
   const now = Date.now() / 1000,
-    diff = now - thread.updatedAt;
+    diff = now - threadTime(thread);
   const date =
     diff < 3600
       ? Math.max(1, Math.floor(diff / 60)) + "分"
       : diff < 86400
         ? Math.floor(diff / 3600) + "时"
-        : new Date(thread.updatedAt * 1000).toLocaleDateString("zh-CN", {
+        : new Date(threadTime(thread) * 1000).toLocaleDateString("zh-CN", {
             month: "numeric",
             day: "numeric",
           });
@@ -146,7 +148,9 @@ function ThreadRow({ thread }) {
           <span className="thread-indent" />
         )}
         <span>{titleOf(thread)}</span>
-        <small>{date}</small>
+        <small title={thread.completedAt == null ? "创建时间" : "最近完成时间"}>
+          {date}
+        </small>
       </button>
       <button
         className="thread-more"
@@ -187,12 +191,7 @@ function ProjectGroup({ path, threads }) {
 function Sidebar() {
   const s = useStore();
   const pinned = s.threads.filter((t) => s.pins.includes(t.id));
-  const groups = new Map(s.projects.map((p) => [p, []]));
-  for (const t of s.threads.filter((t) => !s.pins.includes(t.id))) {
-    const path = t.cwd || s.cwd;
-    if (!groups.has(path)) groups.set(path, []);
-    groups.get(path).push(t);
-  }
+  const groups = projectGroups(s.threads, s.projects, s.pins, s.cwd);
   return (
     <>
       <div
@@ -382,14 +381,12 @@ function SearchDialog() {
     const n = ++epoch.current;
     const timer = setTimeout(() => {
       load(true);
-      rpc("thread/list", {
-        limit: 60,
-        sortKey: "updated_at",
+      listThreads({
         archived: s.archived,
         searchTerm: q || undefined,
       })
         .then((r) => {
-          if (n === epoch.current) update(r.data);
+          if (n === epoch.current) update(r.slice(0, 60));
         })
         .catch(report)
         .finally(() => {

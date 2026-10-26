@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { fullAccessParams } from "./execution-policy";
+import { createThreadOrdering, sortThreads } from "./thread-order";
 
 const listeners = new Set(),
   eventListeners = new Set(),
@@ -104,6 +105,9 @@ let socket,
   initialized = false;
 let pendingForks = saved("cx-pending-forks", []);
 const deletedThreads = new Set();
+const threadOrdering = createThreadOrdering(rpc);
+let listing = 0;
+export const listThreads = (params) => threadOrdering.list(params);
 export function rpc(method, params = {}, timeout = 120000) {
   return new Promise((resolve, reject) => {
     if (!state.connected)
@@ -214,15 +218,14 @@ async function boot() {
   }
 }
 export async function loadThreads(more = false) {
-  const r = await rpc("thread/list", {
-    limit: 60,
-    sortKey: "updated_at",
+  const epoch = ++listing;
+  const limit = Math.max(60, state.threads.length + (more ? 60 : 0));
+  const data = await listThreads({
     archived: state.archived,
     ...(state.search ? { searchTerm: state.search } : {}),
-    ...(more ? { cursor: state.threadCursor } : {}),
   });
-  r.data = r.data.filter((t) => !deletedThreads.has(t.id));
-  pendingForks = pendingForks.filter((id) => !r.data.some((t) => t.id === id));
+  if (epoch !== listing) return;
+  pendingForks = pendingForks.filter((id) => !data.some((t) => t.id === id));
   persist("cx-pending-forks", pendingForks);
   const extra = await Promise.all(
     pendingForks.map((id) =>
@@ -238,9 +241,7 @@ export async function loadThreads(more = false) {
       Boolean(t.path?.includes("/archived_sessions/")) === state.archived &&
       (!state.search || titleOf(t).includes(state.search)),
   );
-  const threads = more
-    ? [...state.threads, ...r.data]
-    : [...visible, ...r.data];
+  const threads = [...visible, ...data];
   if (
     state.current &&
     !state.archived &&
@@ -248,13 +249,17 @@ export async function loadThreads(more = false) {
     !threads.some((t) => t.id === state.current.id)
   )
     threads.unshift(state.current);
-  set({
-    threads: [...new Map(threads.map((t) => [t.id, t])).values()].filter(
+  const sorted = await threadOrdering.hydrate(
+    [...new Map(threads.map((t) => [t.id, t])).values()].filter(
       (thread) => !deletedThreads.has(thread.id),
     ),
-    threadCursor: r.nextCursor,
+  );
+  if (epoch !== listing) return;
+  set({
+    threads: sorted.filter((t) => !deletedThreads.has(t.id)).slice(0, limit),
+    threadCursor: sorted.length > limit ? String(limit) : null,
     current: state.current
-      ? threads.find((t) => t.id === state.current.id) || state.current
+      ? sorted.find((t) => t.id === state.current.id) || state.current
       : null,
   });
 }
@@ -283,11 +288,13 @@ export async function openThread(id) {
   try {
     const r = await rpc("thread/resume", { threadId: id, excludeTurns: true });
     if (epoch !== opening || deletedThreads.has(id)) return;
+    const [thread] = await threadOrdering.hydrate([r.thread]);
+    if (epoch !== opening || deletedThreads.has(id)) return;
     set({
       threads: state.threads.some((t) => t.id === id)
         ? state.threads
-        : [r.thread, ...state.threads],
-      current: r.thread,
+        : sortThreads([thread, ...state.threads]),
+      current: thread,
       cwd: r.cwd || r.thread.cwd,
       model: r.model || state.model,
       effort: r.reasoningEffort || "",
@@ -396,9 +403,22 @@ function handle({ method, params: p = {} }) {
   if (method === "turn/started")
     set({ active: { ...state.active, [p.threadId]: p.turn.id } });
   if (method === "turn/completed") {
+    threadOrdering.completed(p.threadId, p.turn);
     const active = { ...state.active };
     delete active[p.threadId];
-    set({ active });
+    const completedAt = p.turn.completedAt;
+    const update = (thread) =>
+      thread?.id === p.threadId && Number.isFinite(completedAt)
+        ? {
+            ...thread,
+            completedAt: Math.max(thread.completedAt ?? 0, completedAt),
+          }
+        : thread;
+    set({
+      active,
+      threads: sortThreads(state.threads.map(update)),
+      current: update(state.current),
+    });
     if (state.current?.id === p.threadId) {
       if (p.turn.error) report(p.turn.error);
       if (p.turn.status === "interrupted") notice("任务已停止");
@@ -557,6 +577,7 @@ export async function archive(thread) {
   await loadThreads();
 }
 function forgetThread(id) {
+  threadOrdering.forget(id);
   deletedThreads.add(id);
   pendingForks = pendingForks.filter((value) => value !== id);
   persist("cx-pending-forks", pendingForks);

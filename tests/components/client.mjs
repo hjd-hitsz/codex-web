@@ -17,6 +17,8 @@ globalThis.ResizeObserver = class {
 globalThis.testTerminals = [];
 const requests = [];
 let socket;
+let responseFor = (m) =>
+  m.method === "thread/list" ? { data: [], nextCursor: null } : {};
 globalThis.WebSocket = class {
   static OPEN = 1;
   readyState = 1;
@@ -27,8 +29,7 @@ globalThis.WebSocket = class {
     const m = JSON.parse(raw);
     requests.push(m);
     if (m.method === "command/exec") return;
-    const result =
-      m.method === "thread/list" ? { data: [], nextCursor: null } : {};
+    const result = responseFor(m);
     queueMicrotask(() =>
       this.onmessage({ data: JSON.stringify({ id: m.id, result }) }),
     );
@@ -187,4 +188,80 @@ assert.notEqual(localStorage.getItem("cx-terminal"), first);
 await act(async () => view.unmount());
 console.log(
   "PASS 白底终端、Ctrl+D 传递、退出自动折叠及清理、重新打开创建新终端",
+);
+
+const history = Array.from({ length: 65 }, (_, i) => ({
+  id: `sort-${i}`,
+  cwd: `/project-${i % 2}`,
+  createdAt: 100 - i,
+  updatedAt: 100 - i,
+}));
+const completions = new Map(history.map((thread, i) => [thread.id, i + 200]));
+responseFor = ({ method, params }) => {
+  if (method === "thread/list")
+    return {
+      data: params.cursor ? history.slice(60) : history.slice(0, 60),
+      nextCursor: params.cursor ? null : "page-two",
+    };
+  if (method === "thread/turns/list")
+    return {
+      data: [
+        {
+          id: "turn",
+          status: "completed",
+          completedAt: completions.get(params.threadId),
+        },
+      ],
+      nextCursor: null,
+    };
+  if (method === "thread/resume") {
+    const thread = history.find((t) => t.id === params.threadId);
+    thread.updatedAt = 9999;
+    return { thread: { ...thread }, cwd: thread.cwd };
+  }
+  if (method === "thread/items/list") return { data: [], nextCursor: null };
+  return {};
+};
+app.set({
+  current: null,
+  threads: [],
+  active: {},
+  archived: false,
+  search: "",
+});
+await app.loadThreads();
+assert.equal(app.get().threads.length, 60);
+assert.equal(app.get().threads[0].id, "sort-64");
+assert.equal(app.get().threadCursor, "60");
+await app.loadThreads(true);
+assert.equal(app.get().threads.length, 65);
+assert.equal(app.get().threadCursor, null);
+await app.openThread("sort-0");
+assert.equal(app.get().current.completedAt, 200);
+await app.loadThreads();
+assert.equal(app.get().threads[0].id, "sort-64");
+assert.equal(app.get().threads.at(-1).id, "sort-0");
+completions.set("sort-0", 500);
+await act(async () =>
+  socket.emit("turn/completed", {
+    threadId: "sort-0",
+    turn: { id: "new-turn", status: "completed", completedAt: 500 },
+  }),
+);
+assert.equal(app.get().threads[0].id, "sort-0");
+assert.equal(app.get().current.completedAt, 500);
+assert.equal(
+  (await app.listThreads({ archived: true, searchTerm: "排序" }))[0].id,
+  "sort-0",
+);
+assert(
+  requests.some(
+    (r) =>
+      r.method === "thread/list" &&
+      r.params.archived &&
+      r.params.searchTerm === "排序",
+  ),
+);
+console.log(
+  "PASS 完成时间全局排序、分页、打开旧对话顺序稳定、完成事件重排与搜索排序",
 );
