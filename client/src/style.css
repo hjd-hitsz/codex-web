@@ -1197,8 +1197,9 @@ select option {
 }
 .composer-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 13px;
+  gap: 6px 13px;
   font-size: 10px;
   color: var(--muted);
   padding: 10px 4px 0;
@@ -1219,7 +1220,8 @@ select option {
 .context-info {
   margin-left: auto;
   font-size: 10px;
-  white-space: nowrap;
+  max-width: 100%;
+  text-align: right;
 }
 .attachment-list {
   display: flex;
@@ -2021,9 +2023,6 @@ select option {
   .workspace:has(.workspace-panel:not([style*="none"])) .welcome h1 {
     font-size: 23px;
   }
-  .workspace:has(.workspace-panel:not([style*="none"])) .context-info {
-    display: none;
-  }
   .model-select select {
     max-width: 153px;
   }
@@ -2140,9 +2139,6 @@ select option {
   }
   .modal {
     max-height: 86dvh;
-  }
-  .context-info {
-    display: none;
   }
 }
 @media (max-width: 480px) {

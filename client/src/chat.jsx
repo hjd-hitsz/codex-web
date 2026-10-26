@@ -927,17 +927,17 @@ export function Composer() {
           <span>{s.projectless ? "未分类" : basename(s.cwd)}</span>
           <ChevronDown size={11} />
         </button>
-        <span
-          className="context-info"
-          title={
-            usage
-              ? `最近一轮 ${usage.toLocaleString()} tokens / 上下文 ${windowSize?.toLocaleString() || "—"}`
-              : "Ctrl + Enter 发送 · Enter 换行"
-          }
-        >
-          {usage && windowSize
-            ? Math.round((usage / windowSize) * 100) + "% 上下文"
-            : "Ctrl + Enter 发送"}
+        <span className="context-info">
+          {usage != null ? (
+            <>
+              上下文 {usage.toLocaleString()} /{" "}
+              {windowSize?.toLocaleString() ?? "—"} tokens
+              {windowSize > 0 &&
+                `（${Math.round((usage / windowSize) * 100)}%）`}
+            </>
+          ) : (
+            "Ctrl + Enter 发送"
+          )}
         </span>
       </div>
     </div>
