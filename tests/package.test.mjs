@@ -46,7 +46,7 @@ test(
         "--global",
         "--prefix",
         prefix,
-        "--offline",
+        "--prefer-offline",
         "--no-audit",
         "--no-fund",
         join(dir, pack.filename),

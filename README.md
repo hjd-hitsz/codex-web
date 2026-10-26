@@ -81,7 +81,7 @@ npm run check
 
 `dev` 启动 Vite 开发服务器，并把 `/rpc` 和 `/healthz` 代理到网页桥接端口；开发时仍需运行桥接服务和官方后端。`test` 包含单元测试、隔离的桥接协议测试及 React 组件测试，采用模拟后端，不消耗模型额度，也不修改真实聊天。`check` 依次执行格式检查、测试、生产构建和发行包安装测试。
 
-`npm run test:package` 在临时 npm prefix 中全局安装打包产物，检查命令入口、静态资源、用户配置和服务生成。测试使用模拟后端与服务管理命令，不修改真实 systemd 服务；离线安装依赖于 `npm ci` 已填充的本机 npm 缓存。
+`npm run test:package` 在临时 npm prefix 中全局安装打包产物，检查命令入口、静态资源、用户配置和服务生成。测试使用模拟后端与服务管理命令，不修改真实 systemd 服务；安装优先复用 npm 缓存，缺少包元数据或依赖时从配置的 registry 获取。
 
 格式化代码使用 `npm run format`。构建资源写入 `client/dist`，生产服务直接读取该目录；仅修改前端后运行 `npm run build`，刷新网页即可更新。
 
