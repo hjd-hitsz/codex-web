@@ -857,14 +857,14 @@ p {
   margin: 4px 0 16px;
   color: var(--muted);
 }
-.process-group > summary {
+.process-history > summary {
   list-style: none;
   cursor: pointer;
 }
-.process-group > summary::-webkit-details-marker {
+.process-history > summary::-webkit-details-marker {
   display: none;
 }
-.process-group[open] > summary .process-chevron {
+.process-history[open] > summary .process-chevron {
   transform: rotate(90deg);
 }
 .process-content {
