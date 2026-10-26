@@ -5,6 +5,8 @@ import {
   projectGroups,
   sortThreads,
   threadTime,
+  threadGroupPath,
+  PROJECTLESS_SOURCE,
 } from "../src/thread-order.js";
 
 test("完成时间决定对话和项目顺序，打开时间、项目添加顺序与置顶不干扰项目排序", () => {
@@ -19,18 +21,95 @@ test("完成时间决定对话和项目顺序，打开时间、项目添加顺�
     ["pinned", "done", "new", "opened"],
   );
   assert.deepEqual(
-    projectGroups(threads, ["/empty", "/a", "/b"], ["pinned"], "/fallback").map(
+    projectGroups(threads, ["/empty", "/a", "/b"], ["pinned"]).map(
       ([path, list]) => [path, list.map((t) => t.id)],
     ),
     [
       ["/c", []],
       ["/b", ["done", "new"]],
       ["/a", ["opened"]],
+      ["", []],
       ["/empty", []],
     ],
   );
   assert.equal(threadTime(threads[3]), 15);
   assert.equal(threads[0].id, "opened");
+});
+
+test("客户端自动目录合并到未分类，CLI 与外部对话保留实际目录并参与排序", () => {
+  const scratch = "/documents/Codex/2026-10-26";
+  const threads = [
+    { id: "desktop-a", cwd: scratch + "/mu-q", completedAt: 20 },
+    { id: "desktop-b", cwd: scratch + "/x", completedAt: 40 },
+    { id: "cli", cwd: "/code/x", source: "cli", completedAt: 30 },
+    { id: "external", cwd: "/code/mu-q", completedAt: 10 },
+    { id: "missing-cwd", completedAt: 5 },
+    { id: "pinned", cwd: scratch + "/pin", completedAt: 50 },
+  ];
+  assert.deepEqual(
+    projectGroups(threads, [], ["pinned"], {
+      "desktop-a": scratch + "/mu-q",
+      "desktop-b": scratch + "/x",
+      pinned: scratch + "/pin",
+    }).map(([path, list]) => [path, list.map((t) => t.id)]),
+    [
+      ["", ["desktop-b", "desktop-a", "missing-cwd"]],
+      ["/code/x", ["cli"]],
+      ["/code/mu-q", ["external"]],
+    ],
+  );
+});
+
+test("明确项目归属、改变后的目录和未被记录的相似目录保持文件夹分组", () => {
+  const scratch = "/documents/Codex/2026-10-26";
+  const threads = [
+    { id: "assigned", cwd: scratch + "/a", projectId: "project", createdAt: 5 },
+    { id: "added", cwd: scratch + "/b", createdAt: 4 },
+    { id: "moved", cwd: "/code/work", createdAt: 3 },
+    { id: "nested", cwd: scratch + "/c/work/repo", createdAt: 2 },
+    { id: "lookalike", cwd: scratch + "/d", source: "cli", createdAt: 1 },
+  ];
+  const directories = {
+    assigned: scratch + "/a",
+    added: scratch + "/b",
+    moved: scratch + "/c",
+    nested: scratch + "/c",
+  };
+  assert.deepEqual(
+    projectGroups(threads, [scratch + "/b"], [], directories).map(
+      ([path]) => path,
+    ),
+    [...threads.map((t) => t.cwd), ""],
+  );
+  assert.deepEqual(projectGroups([], [], [], directories), [["", []]]);
+});
+
+test("网页新建的无项目对话通过持久来源和独立目录分组，明确归属继续优先", () => {
+  const root = "/custom/codex-web/workspaces";
+  const thread = {
+    id: "web",
+    cwd: root + "/chat-ABC123",
+    threadSource: PROJECTLESS_SOURCE,
+  };
+  assert.equal(threadGroupPath(thread, [], {}, root), "");
+  assert.equal(
+    threadGroupPath({ ...thread, projectId: "assigned" }, [], {}, root),
+    thread.cwd,
+  );
+  assert.equal(threadGroupPath(thread, [thread.cwd], {}, root), thread.cwd);
+  for (const cwd of ["/code/project", thread.cwd + "/repo"]) {
+    assert.equal(threadGroupPath({ ...thread, cwd }, [], {}, root), cwd);
+  }
+  assert.equal(
+    threadGroupPath(
+      { ...thread, threadSource: null, source: "cli" },
+      [],
+      {},
+      root,
+    ),
+    thread.cwd,
+  );
+  assert.equal(threadGroupPath(thread, [], {}, "/different-root"), thread.cwd);
 });
 
 test("跨对话页、轮次页读取完成时间，忽略运行中轮次并缓存；刷新元数据保留实际顺序", async () => {

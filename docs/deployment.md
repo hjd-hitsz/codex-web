@@ -64,10 +64,13 @@ git push origin main vX.Y.Z
 - `HOST`：HTTP 监听地址，默认 `0.0.0.0`。
 - `PORT`：网页端口，默认 `8766`。
 - `CODEX_APP_SERVER_URL`：官方后端 WebSocket 地址，默认 `ws://127.0.0.1:8765`。
+- `CODEX_HOME`：本机 Codex 配置目录，默认当前用户的 `~/.codex`。桥接从其中的 `.codex-global-state.json` 只读识别桌面端的无项目自动目录，合并为“未分类”；文件缺失或暂不可读时按对话实际目录展示。使用独立后端配置目录时，将此值设为对应桌面状态所在目录。
 - `DEFAULT_CWD`：首次打开网页时的默认目录，默认当前操作系统用户的主目录。浏览器已经选择的项目目录优先。
 - `STATIC_DIR`：前端资源目录，默认项目内的 `client/dist`。设置相对路径时，相对服务工作目录解析。
 
 默认端口和监听方式支持通过 IP 直接打开网页。代码没有写死用户名、校园网 IP 或项目所在绝对路径。
+
+网页在“未分类”中创建的对话使用 `CODEX_HOME/codex-web/workspaces/chat-XXXXXX` 作为独立工作目录，首次发送时分配。该目录保存任务生成的文件，迁移机器时可随 Codex 配置目录一起保留；聊天记录仍由后端管理。
 
 ## systemd 服务
 

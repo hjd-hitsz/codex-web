@@ -4,9 +4,7 @@ import {
   PanelLeft,
   SquarePen,
   Search,
-  Folder,
   FolderPlus,
-  ChevronDown,
   ChevronRight,
   Plus,
   Settings,
@@ -73,6 +71,7 @@ import {
 import "./style.css";
 import { projectGroups, threadTime } from "./thread-order";
 import { VersionDetails } from "./version";
+import { ProjectGroup } from "./project-group";
 
 function ThreadMenu({ thread, onClose }) {
   const s = useStore();
@@ -169,30 +168,16 @@ function ThreadRow({ thread }) {
     </div>
   );
 }
-function ProjectGroup({ path, threads }) {
-  const [open, expand] = useState(true);
-  return (
-    <div className="project-group">
-      <div className="project-heading">
-        <button title={path} onClick={() => expand(!open)}>
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <Folder size={14} />
-          <span>{basename(path)}</span>
-        </button>
-        <IconButton
-          icon={Plus}
-          title={"在 " + basename(path) + " 中新建对话"}
-          onClick={() => newChat(path)}
-        />
-      </div>
-      {open && threads.map((t) => <ThreadRow key={t.id} thread={t} />)}
-    </div>
-  );
-}
 function Sidebar() {
   const s = useStore();
   const pinned = s.threads.filter((t) => s.pins.includes(t.id));
-  const groups = projectGroups(s.threads, s.projects, s.pins, s.cwd);
+  const groups = projectGroups(
+    s.threads,
+    s.projects,
+    s.pins,
+    s.projectlessDirectories,
+    s.projectlessRoot,
+  );
   return (
     <>
       <div
@@ -267,7 +252,11 @@ function Sidebar() {
             </div>
           )}
           {[...groups].map(([path, threads]) => (
-            <ProjectGroup key={path} path={path} threads={threads} />
+            <ProjectGroup key={path} path={path}>
+              {threads.map((t) => (
+                <ThreadRow key={t.id} thread={t} />
+              ))}
+            </ProjectGroup>
           ))}
           {!s.threads.length && (
             <div className="sidebar-empty">
@@ -324,10 +313,10 @@ function Header() {
       />
       <div className="breadcrumb">
         <button
-          title={s.cwd}
+          title={s.projectless ? "未指定项目；可选择文件夹" : s.cwd}
           onClick={() => set({ modal: { type: "directory" } })}
         >
-          {basename(s.cwd)}
+          {s.projectless ? "未分类" : basename(s.cwd)}
         </button>
         <ChevronRight size={13} />
         <span>{s.current ? titleOf(s.current) : "新对话"}</span>
@@ -819,7 +808,7 @@ function Modal() {
             onChoose={(path) => {
               if (type === "project") addProject(path);
               else if (s.current) newChat(path);
-              else set({ cwd: path });
+              else set({ cwd: path, projectless: false, projectlessCwd: null });
               set({ modal: null });
             }}
           />

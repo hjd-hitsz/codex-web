@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export function readConfig(env = process.env) {
@@ -9,10 +9,13 @@ export function readConfig(env = process.env) {
   const upstreamUrl = env.CODEX_APP_SERVER_URL || "ws://127.0.0.1:8765";
   if (!["ws:", "wss:"].includes(new URL(upstreamUrl).protocol))
     throw new Error("CODEX_APP_SERVER_URL 必须是 WebSocket 地址");
+  const codexHome = resolve(env.CODEX_HOME || join(homedir(), ".codex"));
   return {
     host: env.HOST || "0.0.0.0",
     port,
     upstreamUrl,
+    codexHome,
+    projectlessRoot: join(codexHome, "codex-web", "workspaces"),
     defaultCwd: resolve(env.DEFAULT_CWD || homedir()),
     staticDir: env.STATIC_DIR
       ? resolve(env.STATIC_DIR)

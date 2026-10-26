@@ -1,6 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { fullAccessParams } from "./execution-policy";
-import { createThreadOrdering, sortThreads } from "./thread-order";
+import {
+  createThreadOrdering,
+  sortThreads,
+  threadGroupPath,
+  PROJECTLESS_SOURCE,
+} from "./thread-order";
 
 const listeners = new Set(),
   eventListeners = new Set(),
@@ -45,7 +50,12 @@ let state = {
   effort: "",
   mode: "default",
   cwd: saved("cx-cwd", ""),
+  defaultCwd: "",
+  projectless: saved("cx-projectless", false),
+  projectlessCwd: null,
+  projectlessRoot: "",
   projects: saved("cx-projects", []),
+  projectlessDirectories: {},
   pins: saved("cx-pins", []),
   theme: saved("cx-theme", "system"),
   draft: "",
@@ -69,6 +79,8 @@ let state = {
 };
 export function set(patch) {
   if (patch.cwd) persist("cx-cwd", patch.cwd);
+  if (patch.projectless !== undefined)
+    persist("cx-projectless", patch.projectless);
   state = { ...state, ...patch };
   for (const fn of listeners) fn();
 }
@@ -158,6 +170,8 @@ function connect() {
         ...(!state.cwd && m.params.defaultCwd
           ? { cwd: m.params.defaultCwd }
           : {}),
+        defaultCwd: m.params.defaultCwd,
+        projectlessRoot: m.params.projectlessRoot || "",
         connected: m.params.ready,
         serverVersion: m.params.version || null,
         active: m.params.activeTurns,
@@ -241,10 +255,13 @@ async function boot() {
 export async function loadThreads(more = false) {
   const epoch = ++listing;
   const limit = Math.max(60, state.threads.length + (more ? 60 : 0));
-  const data = await listThreads({
-    archived: state.archived,
-    ...(state.search ? { searchTerm: state.search } : {}),
-  });
+  const [data, projectless] = await Promise.all([
+    listThreads({
+      archived: state.archived,
+      ...(state.search ? { searchTerm: state.search } : {}),
+    }),
+    rpc("lan/projectless/read").catch(() => ({ directories: {} })),
+  ]);
   if (epoch !== listing) return;
   pendingForks = pendingForks.filter((id) => !data.some((t) => t.id === id));
   persist("cx-pending-forks", pendingForks);
@@ -277,6 +294,7 @@ export async function loadThreads(more = false) {
   );
   if (epoch !== listing) return;
   set({
+    projectlessDirectories: projectless.directories,
     threads: sorted.filter((t) => !deletedThreads.has(t.id)).slice(0, limit),
     threadCursor: sorted.length > limit ? String(limit) : null,
     current: state.current
@@ -288,14 +306,16 @@ export function setDraft(draft) {
   set({ draft });
   localStorage.setItem("cx-draft-" + (state.current?.id || "new"), draft);
 }
-export function newChat(cwd = state.cwd) {
+export function newChat(cwd = state.projectless ? "" : state.cwd) {
   opening++;
   localStorage.removeItem("cx-current");
   set({
     current: null,
     items: [],
     historyCursor: null,
-    cwd,
+    cwd: cwd || state.defaultCwd,
+    projectless: !cwd,
+    projectlessCwd: null,
     draft: localStorage.getItem("cx-draft-new") || "",
     attachments: [],
     error: "",
@@ -317,6 +337,13 @@ export async function openThread(id) {
         : sortThreads([thread, ...state.threads]),
       current: thread,
       cwd: r.cwd || r.thread.cwd,
+      projectless: !threadGroupPath(
+        thread,
+        state.projects,
+        state.projectlessDirectories,
+        state.projectlessRoot,
+      ),
+      projectlessCwd: null,
       model: r.model || state.model,
       effort: r.reasoningEffort || "",
       items: [],
@@ -512,10 +539,29 @@ function handle({ method, params: p = {} }) {
 }
 export async function ensureThread() {
   if (state.current) return state.current;
+  const epoch = opening;
+  const { projectless, model } = state;
+  let cwd = state.cwd;
+  if (projectless) {
+    if (!state.projectlessCwd) {
+      const workspace = await rpc("lan/projectless/prepare");
+      if (epoch !== opening)
+        throw new Error("对话已切换，请在当前对话重新发送消息。");
+      set({
+        cwd: workspace.cwd,
+        projectlessCwd: workspace.cwd,
+        projectlessRoot: workspace.root,
+      });
+    }
+    cwd = state.projectlessCwd;
+  }
   const r = await rpc("thread/start", {
-    cwd: state.cwd,
-    model: state.model || undefined,
+    cwd,
+    model: model || undefined,
+    ...(projectless ? { threadSource: PROJECTLESS_SOURCE } : {}),
   });
+  if (epoch !== opening)
+    throw new Error("对话已切换，请在当前对话重新发送消息。");
   set({ current: r.thread });
   localStorage.setItem("cx-current", r.thread.id);
   return r.thread;
@@ -641,6 +687,9 @@ export async function fork(thread = state.current, lastTurnId) {
     threadId: thread.id,
     excludeTurns: true,
     ...(lastTurnId ? { lastTurnId } : {}),
+    ...(thread.threadSource === PROJECTLESS_SOURCE
+      ? { threadSource: PROJECTLESS_SOURCE }
+      : {}),
   });
   pendingForks = [...new Set([...pendingForks, r.thread.id])];
   persist("cx-pending-forks", pendingForks);

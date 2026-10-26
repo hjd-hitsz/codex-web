@@ -1,5 +1,6 @@
 export const threadTime = (thread) =>
   thread.completedAt ?? thread.createdAt ?? 0;
+export const PROJECTLESS_SOURCE = "codex-web-projectless";
 
 export function sortThreads(threads) {
   return threads
@@ -7,11 +8,37 @@ export function sortThreads(threads) {
     .sort((a, b) => threadTime(b) - threadTime(a) || a.id.localeCompare(b.id));
 }
 
-export function projectGroups(threads, projects, pins, cwd) {
-  const groups = new Map(projects.map((path) => [path, []]));
+export function threadGroupPath(thread, projects, directories, root) {
+  if (!thread.cwd) return "";
+  if (thread.projectId || projects.includes(thread.cwd)) return thread.cwd;
+  const workspace =
+    root && thread.cwd.startsWith(root + "/")
+      ? thread.cwd.slice(root.length + 1)
+      : "";
+  const webProjectless =
+    thread.threadSource === PROJECTLESS_SOURCE &&
+    /^chat-[A-Za-z0-9]{6}$/.test(workspace);
+  return directories[thread.id] === thread.cwd || webProjectless
+    ? ""
+    : thread.cwd;
+}
+
+export function projectGroups(
+  threads,
+  projects,
+  pins,
+  projectlessDirectories = {},
+  projectlessRoot = "",
+) {
+  const groups = new Map([["", []], ...projects.map((path) => [path, []])]);
   const times = new Map();
   for (const thread of sortThreads(threads)) {
-    const path = thread.cwd || cwd;
+    const path = threadGroupPath(
+      thread,
+      projects,
+      projectlessDirectories,
+      projectlessRoot,
+    );
     if (!groups.has(path)) groups.set(path, []);
     times.set(path, Math.max(times.get(path) || 0, threadTime(thread)));
     if (!pins.includes(thread.id)) groups.get(path).push(thread);

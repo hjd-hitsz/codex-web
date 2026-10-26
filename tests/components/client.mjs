@@ -2,6 +2,10 @@ import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import React, { act } from "react";
 import { create } from "react-test-renderer";
+import {
+  PROJECTLESS_SOURCE,
+  projectGroups,
+} from "../../client/src/thread-order.js";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const storage = new Map();
 globalThis.localStorage = {
@@ -50,6 +54,132 @@ localStorage.setItem(
 const app = await import(
   pathToFileURL(process.env.CODEX_COMPONENT_BUNDLE).href
 );
+let projectView;
+app.set({ defaultCwd: "/default", cwd: "/previous-project" });
+await act(async () => {
+  projectView = create(
+    React.createElement(app.ProjectGroup, { path: "" }, "无项目对话"),
+  );
+});
+assert(JSON.stringify(projectView.toJSON()).includes("未分类"));
+assert(JSON.stringify(projectView.toJSON()).includes("无项目对话"));
+assert.equal(projectView.root.findAllByType("button").length, 2);
+await act(async () =>
+  projectView.root
+    .findByProps({ title: "在 未分类 中新建对话" })
+    .props.onClick(),
+);
+assert.equal(app.get().projectless, true);
+assert.equal(app.get().cwd, "/default");
+assert.equal(app.get().current, null);
+assert.equal(
+  requests.filter((r) => r.method === "lan/projectless/prepare").length,
+  0,
+);
+await act(async () =>
+  projectView.root.findByProps({ title: "未指定项目的对话" }).props.onClick(),
+);
+assert(!JSON.stringify(projectView.toJSON()).includes("无项目对话"));
+await act(async () => projectView.unmount());
+await act(async () => {
+  projectView = create(
+    React.createElement(app.ProjectGroup, { path: "/code/x" }, "项目对话"),
+  );
+});
+assert.equal(projectView.root.findAllByType("button").length, 2);
+await act(async () =>
+  projectView.root.findByProps({ title: "在 x 中新建对话" }).props.onClick(),
+);
+assert.equal(app.get().cwd, "/code/x");
+assert.equal(app.get().projectless, false);
+await act(async () => projectView.unmount());
+console.log("PASS 未分类分组展示与折叠、实际项目目录和新建对话入口");
+
+{
+  const root = "/codex/codex-web/workspaces";
+  const thread = {
+    id: "new-projectless",
+    cwd: root + "/chat-ABC123",
+    threadSource: PROJECTLESS_SOURCE,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  let prepareFails = true,
+    startFails = true,
+    preparations = 0;
+  responseFor = ({ method }) => {
+    if (method === "lan/projectless/prepare") {
+      preparations++;
+      return prepareFails
+        ? { error: { message: "目录不可写" } }
+        : { cwd: thread.cwd, root };
+    }
+    if (method === "thread/start")
+      return startFails ? { error: { message: "创建暂时失败" } } : { thread };
+    if (method === "thread/resume") return { thread, cwd: thread.cwd };
+    if (method === "thread/list") return { data: [thread] };
+    if (method === "thread/turns/list" || method === "thread/items/list")
+      return { data: [] };
+    if (method === "lan/projectless/read") return { directories: {} };
+    if (method === "turn/start")
+      return { turn: { id: "projectless-turn", status: "inProgress" } };
+    return {};
+  };
+  app.set({
+    connected: true,
+    model: "fixture-model",
+    projects: [],
+    threads: [],
+    archived: false,
+    search: "",
+    active: {},
+  });
+  app.newChat("");
+  app.setDraft("创建无项目对话");
+  const startCount = requests.filter((r) => r.method === "thread/start").length;
+  assert.equal(await app.sendMessage(), false);
+  assert.equal(
+    requests.filter((r) => r.method === "thread/start").length,
+    startCount,
+  );
+  assert.equal(app.get().draft, "创建无项目对话");
+  prepareFails = false;
+  assert.equal(await app.sendMessage(), false);
+  assert.equal(app.get().projectlessCwd, thread.cwd);
+  startFails = false;
+  assert.equal(await app.sendMessage(), true);
+  assert.equal(preparations, 2);
+  const start = requests.findLast((r) => r.method === "thread/start");
+  assert.equal(start.params.cwd, thread.cwd);
+  assert.equal(start.params.threadSource, PROJECTLESS_SOURCE);
+  assert.equal(start.params.approvalPolicy, "never");
+  assert.equal(start.params.sandbox, "danger-full-access");
+  assert.equal(app.get().cwd, thread.cwd);
+  await app.loadThreads();
+  app.set({ current: null, projectless: false });
+  await app.openThread(thread.id);
+  assert.equal(app.get().projectless, true);
+  assert.equal(
+    projectGroups(
+      app.get().threads,
+      [],
+      [],
+      app.get().projectlessDirectories,
+      root,
+    )[0][0],
+    "",
+  );
+  app.newChat();
+  assert.equal(app.get().projectless, true);
+  assert.equal(app.get().projectlessCwd, null);
+  app.newChat("/code/x");
+  app.set({ threads: [], active: {}, error: "", model: "" });
+  responseFor = (m) => (m.method === "thread/list" ? { data: [] } : {});
+  requests.length = 0;
+  console.log(
+    "PASS 未分类新建的独立目录、失败重试与草稿保留、统一权限、重新加载归类及新建上下文",
+  );
+}
 let versionView;
 await act(async () => {
   versionView = create(React.createElement(app.VersionDetails));
@@ -229,7 +359,13 @@ const history = Array.from({ length: 65 }, (_, i) => ({
   updatedAt: 100 - i,
 }));
 const completions = new Map(history.map((thread, i) => [thread.id, i + 200]));
+let projectlessDirectories = { "sort-0": "/project-0" };
+let projectlessUnavailable = false;
 responseFor = ({ method, params }) => {
+  if (method === "lan/projectless/read")
+    return projectlessUnavailable
+      ? { error: { message: "分组元数据暂不可用" } }
+      : { directories: projectlessDirectories };
   if (method === "thread/list")
     return {
       data: params.cursor ? history.slice(60) : history.slice(0, 60),
@@ -262,6 +398,7 @@ app.set({
   search: "",
 });
 await app.loadThreads();
+assert.deepEqual(app.get().projectlessDirectories, projectlessDirectories);
 assert.equal(app.get().threads.length, 60);
 assert.equal(app.get().threads[0].id, "sort-64");
 assert.equal(app.get().threadCursor, "60");
@@ -270,7 +407,12 @@ assert.equal(app.get().threads.length, 65);
 assert.equal(app.get().threadCursor, null);
 await app.openThread("sort-0");
 assert.equal(app.get().current.completedAt, 200);
+projectlessDirectories = {};
 await app.loadThreads();
+assert.deepEqual(app.get().projectlessDirectories, {});
+projectlessUnavailable = true;
+await app.loadThreads();
+assert.deepEqual(app.get().projectlessDirectories, {});
 assert.equal(app.get().threads[0].id, "sort-64");
 assert.equal(app.get().threads.at(-1).id, "sort-0");
 completions.set("sort-0", 500);

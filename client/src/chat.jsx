@@ -920,11 +920,11 @@ export function Composer() {
       </div>
       <div className="composer-meta">
         <button
-          title={s.cwd}
+          title={s.projectless ? "未指定项目；可选择文件夹" : s.cwd}
           onClick={() => set({ modal: { type: "directory" } })}
         >
           <Folder size={13} />
-          <span>{basename(s.cwd)}</span>
+          <span>{s.projectless ? "未分类" : basename(s.cwd)}</span>
           <ChevronDown size={11} />
         </button>
         <span

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,10 +28,25 @@ test(
     const files = await mkdtemp(join(tmpdir(), "codex-web-test-"));
     const version = readVersion();
     await writeFile(join(files, "index.html"), "<h1>Codex Web test</h1>");
+    const desktopStatePath = join(files, ".codex-global-state.json");
+    const scratch = join(files, "documents", "2026-10-26", "scratch");
+    await writeFile(
+      desktopStatePath,
+      JSON.stringify({
+        "projectless-thread-ids": ["fixture-projectless", "fixture-cli"],
+        "thread-projectless-output-directories": {
+          "fixture-projectless": join(scratch, "outputs"),
+        },
+        "thread-workspace-root-hints": {
+          "fixture-projectless": join(files, "documents"),
+        },
+      }),
+    );
     const upstream = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(upstream, "listening");
     let clientVersion, backend;
-    const answers = [];
+    const answers = [],
+      backendMethods = [];
     upstream.on("connection", (socket) => {
       backend = socket;
       socket.on("message", (bytes) => {
@@ -42,6 +57,7 @@ test(
         }
         if (request.method === "initialize")
           clientVersion = request.params.clientInfo.version;
+        backendMethods.push(request.method);
         if (request.id !== undefined)
           socket.send(
             JSON.stringify({
@@ -61,6 +77,7 @@ test(
           PORT: "0",
           STATIC_DIR: files,
           DEFAULT_CWD: files,
+          CODEX_HOME: files,
           CODEX_APP_SERVER_URL: `ws://127.0.0.1:${upstream.address().port}`,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -91,6 +108,10 @@ test(
           const message = JSON.parse(bytes);
           if (message.method === "lan/state" && message.params.ready) {
             assert.equal(message.params.defaultCwd, files);
+            assert.equal(
+              message.params.projectlessRoot,
+              join(files, "codex-web", "workspaces"),
+            );
             assert.deepEqual(message.params.version, version);
             onState(message.params);
             resolve();
@@ -115,6 +136,35 @@ test(
       await Promise.all([echo(first, "first"), echo(second, "second")]),
       ["first", "second"],
     );
+    let projectlessSequence = 0;
+    async function projectless(method = "lan/projectless/read") {
+      const id = "projectless-" + projectlessSequence++;
+      const response = messageFrom(first, (m) => m.id === id);
+      first.send(
+        JSON.stringify({
+          id,
+          method,
+        }),
+      );
+      return (await response).result;
+    }
+    assert.deepEqual(await projectless(), {
+      directories: { "fixture-projectless": scratch },
+    });
+    await writeFile(desktopStatePath, "{}");
+    assert.deepEqual(await projectless(), { directories: {} });
+    assert.ok(!backendMethods.includes("lan/projectless/read"));
+    const workspaces = await Promise.all([
+      projectless("lan/projectless/prepare"),
+      projectless("lan/projectless/prepare"),
+    ]);
+    assert.notEqual(workspaces[0].cwd, workspaces[1].cwd);
+    for (const workspace of workspaces) {
+      assert.equal(workspace.root, join(files, "codex-web", "workspaces"));
+      assert.ok(workspace.cwd.startsWith(workspace.root + "/chat-"));
+      assert.ok((await stat(workspace.cwd)).isDirectory());
+    }
+    assert.ok(!backendMethods.includes("lan/projectless/prepare"));
     const health = await fetch(url + "/healthz");
     assert.equal(health.status, 200);
     assert.equal(health.headers.get("cache-control"), "no-store");

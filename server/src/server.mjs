@@ -5,6 +5,10 @@ import { gzipSync } from "node:zlib";
 import WebSocket, { WebSocketServer } from "ws";
 import { readConfig } from "./config.mjs";
 import { readVersion } from "./version.mjs";
+import {
+  prepareProjectlessDirectory,
+  readProjectlessDirectories,
+} from "./thread-projects.mjs";
 
 const config = readConfig();
 const version = readVersion();
@@ -71,6 +75,7 @@ function state() {
       ready,
       version,
       defaultCwd: config.defaultCwd,
+      projectlessRoot: config.projectlessRoot,
       questions: [...questions.values()],
       activeTurns: Object.fromEntries(activeTurns),
       terminals: Object.fromEntries(terminals),
@@ -293,6 +298,15 @@ clients.on("connection", (client) => {
     } catch {
       return;
     }
+    if (message.method === "lan/projectless/read") {
+      send(client, {
+        id: message.id,
+        result: {
+          directories: await readProjectlessDirectories(config.codexHome),
+        },
+      });
+      return;
+    }
     const threadId = message.params?.threadId;
     if (threadId && releasing.has(threadId)) await releasing.get(threadId);
     if (!ready) {
@@ -303,6 +317,26 @@ clients.on("connection", (client) => {
       return;
     }
     if (message.method) {
+      if (message.method === "lan/projectless/prepare") {
+        try {
+          send(client, {
+            id: message.id,
+            result: {
+              cwd: await prepareProjectlessDirectory(config.projectlessRoot),
+              root: config.projectlessRoot,
+            },
+          });
+        } catch (error) {
+          send(client, {
+            id: message.id,
+            error: {
+              code: -32000,
+              message: "创建对话工作目录失败：" + error.message,
+            },
+          });
+        }
+        return;
+      }
       if (message.method === "thread/unsubscribe") {
         subscriptions.get(threadId)?.delete(client);
         releaseUnusedThreads();
