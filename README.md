@@ -11,7 +11,38 @@
 - `/usr/bin/zsh`：网页交互式终端使用的 shell。
 - 本项目已在 Codex CLI `0.162.1` 上验证。
 
-## 安装和启动
+## 全局 npm 安装
+
+发行包内包含已构建的网页和运行所需的桥接代码，目标机器无需克隆源码或构建前端。后台自启动使用 Linux systemd 用户服务；先在目标机器安装 Node.js 24+、npm、Codex CLI 和 zsh，并完成该机器的 Codex 登录。
+
+项目尚未发布到 npm registry。目前可以将打包生成的 `codex-web-2.0.0.tgz` 复制到目标机器后安装：
+
+```bash
+npm install -g ./codex-web-2.0.0.tgz
+codex-web service install
+loginctl enable-linger "$USER"
+codex-web service status
+```
+
+`loginctl enable-linger` 用于开机启动用户服务及退出登录后继续运行，可能需要管理员授权。服务安装以运行 Codex 的普通用户执行，npm 全局命令所在目录需在 `PATH` 中。
+
+服务启动后访问 `http://电脑IP:8766`，本机可访问 `http://127.0.0.1:8766`。安装命令会创建并启用后端和网页服务，保留已有的 Codex 后端配置；当前已运行的服务继续运行。首次连接可通过 `curl http://127.0.0.1:8766/healthz` 检查。
+
+发布到 npm registry 后，安装命令可简化为 `npm install -g codex-web`，其余部署步骤相同。发布流程见 [部署与维护](docs/deployment.md)。
+
+常用命令：
+
+```bash
+codex-web --help
+codex-web config init
+codex-web service restart-when-idle
+```
+
+全局安装的配置保存在 `~/.config/codex-web/.env`，npm 升级后保留；支持 `XDG_CONFIG_HOME` 或 `CODEX_WEB_CONFIG_DIR` 指定目录。`config init` 保留已有配置。配置文件以外的当前目录 `.env` 不参与全局命令的配置加载。
+
+如需前台运行，在两个终端分别执行 `codex-web backend` 和 `codex-web`。已有可连接的后端时，执行 `codex-web` 即可。
+
+## 从源码安装和启动
 
 在项目根目录执行：
 
@@ -48,7 +79,9 @@ npm test
 npm run check
 ```
 
-`dev` 启动 Vite 开发服务器，并把 `/rpc` 和 `/healthz` 代理到网页桥接端口；开发时仍需运行桥接服务和官方后端。`test` 包含单元测试、隔离的桥接协议测试及 React 组件测试，采用模拟后端，不消耗模型额度，也不修改真实聊天。`check` 依次执行格式检查、测试和生产构建。
+`dev` 启动 Vite 开发服务器，并把 `/rpc` 和 `/healthz` 代理到网页桥接端口；开发时仍需运行桥接服务和官方后端。`test` 包含单元测试、隔离的桥接协议测试及 React 组件测试，采用模拟后端，不消耗模型额度，也不修改真实聊天。`check` 依次执行格式检查、测试、生产构建和发行包安装测试。
+
+`npm run test:package` 在临时 npm prefix 中全局安装打包产物，检查命令入口、静态资源、用户配置和服务生成。测试使用模拟后端与服务管理命令，不修改真实 systemd 服务；离线安装依赖于 `npm ci` 已填充的本机 npm 缓存。
 
 格式化代码使用 `npm run format`。构建资源写入 `client/dist`，生产服务直接读取该目录；仅修改前端后运行 `npm run build`，刷新网页即可更新。
 
@@ -71,6 +104,7 @@ npm run check
 ## 项目结构
 
 ```text
+bin/codex-web.mjs      全局命令入口和用户配置加载
 client/
   src/                 前端组件、状态和 JSON-RPC 客户端
   tests/               消息、过程分组、翻译和权限策略测试

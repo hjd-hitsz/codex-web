@@ -1,8 +1,48 @@
 # 部署与维护
 
+## 发行包与迁移
+
+当前源码支持打包为全局 npm 工具。项目尚未发布到 npm registry，维护者可先构建可迁移的发行包：
+
+```bash
+npm ci
+npm run check
+npm pack
+```
+
+`npm pack` 的 `prepack` 会重新构建网页，生成 `codex-web-2.0.0.tgz`。包内包含命令行入口、前端构建资源、桥接代码和运行脚本；通过 `files` 白名单排除开发源码、测试、聊天数据和实际环境配置。运行依赖由 npm 安装，目标机器需要能获取 npm 依赖或具备相应缓存。
+
+将 `.tgz` 复制到已配置 Node.js 24+、Codex CLI、zsh 和 systemd 的 Linux 机器，以运行 Codex 的用户完成本机 Codex 登录，然后执行：
+
+```bash
+npm install -g ./codex-web-2.0.0.tgz
+codex-web service install
+loginctl enable-linger "$USER"
+codex-web service status
+curl http://127.0.0.1:8766/healthz
+```
+
+`service install` 创建缺失的后端服务并安装网页服务，启用两者的自启动；已有后端服务继续使用原配置。`enable-linger` 由系统授权策略决定是否需要管理员操作，使用户服务可在开机后、登录前启动。目标机器的防火墙需允许访问网页端口。
+
+全局安装支持以下命令：
+
+- `codex-web` / `codex-web start`：前台运行网页桥接，连接配置中的后端。
+- `codex-web backend`：前台运行 Codex app-server。
+- `codex-web config init`：创建用户 `.env`，保留已有文件。
+- `codex-web service install`：安装或更新服务文件，启动尚未运行的服务。
+- `codex-web service status`：查看网页与后端状态。
+- `codex-web service start` / `stop` / `restart`：启动、停止或重启网页服务；启动网页时也会拉起后端，停止网页时后端继续运行。
+- `codex-web service restart-when-idle`：等待当前任务和网页终端结束后重启网页。
+
+更新全局安装时，先安装新版包，再执行 `codex-web service install` 更新服务中的安装路径，最后执行 `codex-web service restart-when-idle`。切换 Node.js 版本或 npm prefix 后也采用此流程。全局安装与源码部署使用相同服务名，一台机器同一用户使用一套部署；从源码切换到全局包时，将需要保留的 `.env` 配置迁移到用户配置目录。
+
+向 npm registry 发布需要维护者拥有包名发布权限并完成 npm 身份验证。确认包名和内容后执行 `npm publish ./codex-web-2.0.0.tgz --access public`；发布成功后其他机器即可使用 `npm install -g codex-web`。若选择作用域包名，应先修改根 `package.json` 的 `name` 并更新锁文件，再重新验证和打包；命令名仍为 `codex-web`。
+
 ## 配置
 
-项目根目录的 `.env` 同时供 `npm start`、后端启动脚本和安装后的网页服务读取。配置模板为 `.env.example`。
+源码部署从项目根目录 `.env` 读取配置。全局命令从 `~/.config/codex-web/.env` 读取配置；设置 `XDG_CONFIG_HOME` 时使用其下的 `codex-web` 目录，设置 `CODEX_WEB_CONFIG_DIR` 时优先使用该目录。外部环境变量优先于 `.env`。全局服务安装会记录配置目录，后续启动与 npm 升级继续使用该目录。配置模板为包内 `.env.example`。
+
+全局命令以用户配置目录作为工作目录，相对 `STATIC_DIR` 和 `DEFAULT_CWD` 据此解析。前端资源在未配置 `STATIC_DIR` 时自动定位到当前安装包的 `client/dist`。
 
 - `HOST`：HTTP 监听地址，默认 `0.0.0.0`。
 - `PORT`：网页端口，默认 `8766`。
@@ -22,7 +62,7 @@
 loginctl enable-linger "$USER"
 ```
 
-如果安装脚本创建了新的后端服务，可以在项目根目录的 `.env.backend` 中配置后端代理环境。此文件已被 Git 忽略。已有后端服务的代理设置继续由原服务配置管理。
+如果安装脚本创建了新的后端服务，可以在配置目录的 `.env.backend` 中配置后端代理环境（源码部署为项目根目录，全局安装为用户配置目录）。源码中的此文件已被 Git 忽略。已有后端服务的代理设置继续由原服务配置管理。
 
 ```bash
 systemctl --user status codex-lan-web.service codex-app-server.service

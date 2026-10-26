@@ -1,12 +1,24 @@
 {
   "name": "codex-web",
   "version": "2.0.0",
-  "private": true,
   "type": "module",
   "description": "基于本机 Codex app-server 的浏览器客户端",
   "engines": {
     "node": ">=24"
   },
+  "bin": {
+    "codex-web": "bin/codex-web.mjs"
+  },
+  "files": [
+    "bin/",
+    "client/dist/",
+    "server/src/",
+    "scripts/install-services.mjs",
+    "scripts/start-backend.mjs",
+    "scripts/restart-when-idle.mjs",
+    ".env.example",
+    "docs/"
+  ],
   "workspaces": [
     "client",
     "server"
@@ -14,14 +26,16 @@
   "scripts": {
     "dev": "npm run dev --workspace @codex-web/client",
     "build": "npm run build --workspace @codex-web/client",
+    "prepack": "npm run build",
     "start": "node --env-file-if-exists=.env server/src/server.mjs",
     "start:backend": "node --env-file-if-exists=.env scripts/start-backend.mjs",
     "test": "npm run test:unit && npm run test:components",
     "test:unit": "node --test client/tests/*.test.js server/tests/*.test.mjs",
     "test:components": "node scripts/test-components.mjs",
+    "test:package": "npm run build && node --test tests/package.test.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && npm test && npm run build",
+    "check": "npm run format:check && npm test && npm run test:package",
     "service:install": "node --env-file-if-exists=.env scripts/install-services.mjs",
     "service:restart": "systemctl --user restart codex-lan-web.service",
     "service:status": "systemctl --user status codex-lan-web.service codex-app-server.service --no-pager",

@@ -1,0 +1,194 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
+import { WebSocketServer } from "ws";
+
+const root = fileURLToPath(new URL("../", import.meta.url));
+
+test(
+  "发布包可全局安装、读取用户配置并安装服务，保留现有后端",
+  { timeout: 60000 },
+  async (t) => {
+    const dir = await mkdtemp(join(tmpdir(), "codex-web-package-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const [pack] = JSON.parse(
+      execFileSync(
+        "npm",
+        ["pack", "--ignore-scripts", "--json", "--pack-destination", dir],
+        { cwd: root, encoding: "utf8" },
+      ),
+    );
+    const paths = pack.files.map((file) => file.path);
+    for (const path of [
+      "bin/codex-web.mjs",
+      "client/dist/index.html",
+      "client/dist/app.js",
+      "client/dist/style.css",
+      ".env.example",
+    ])
+      assert.ok(paths.includes(path), `安装包缺少 ${path}`);
+    assert.ok(
+      paths.every((path) => !/(^|\/)(tests|node_modules|\.git)\//.test(path)),
+    );
+    assert.ok(!paths.includes(".env"));
+    assert.ok(!paths.includes("client/src/main.jsx"));
+    const prefix = join(dir, "prefix");
+    execFileSync(
+      "npm",
+      [
+        "install",
+        "--global",
+        "--prefix",
+        prefix,
+        "--offline",
+        "--no-audit",
+        "--no-fund",
+        join(dir, pack.filename),
+      ],
+      { encoding: "utf8" },
+    );
+    const cli = join(prefix, "bin/codex-web");
+    const configDir = join(dir, "user config");
+    const env = {
+      ...process.env,
+      CODEX_WEB_CONFIG_DIR: configDir,
+      XDG_CONFIG_HOME: join(dir, "config"),
+      XDG_STATE_HOME: join(dir, "state"),
+    };
+    for (const key of [
+      "PORT",
+      "HOST",
+      "CODEX_APP_SERVER_URL",
+      "STATIC_DIR",
+      "DEFAULT_CWD",
+      "NODE_ENV",
+    ])
+      delete env[key];
+    const run = (...args) =>
+      execFileSync(cli, args, {
+        cwd: dir,
+        env,
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+    assert.match(run("--help"), /service install/);
+    assert.equal(run("--version").trim(), pack.version);
+    assert.throws(() => run("invalid"), /未知命令/);
+    run("config", "init");
+
+    const upstream = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await once(upstream, "listening");
+    t.after(async () => {
+      for (const client of upstream.clients) client.terminate();
+      await new Promise((resolve) => upstream.close(resolve));
+    });
+    upstream.on("connection", (socket) =>
+      socket.on("message", (bytes) => {
+        const message = JSON.parse(bytes);
+        if (message.method === "initialize")
+          socket.send(JSON.stringify({ id: message.id, result: {} }));
+      }),
+    );
+    const config = `HOST=127.0.0.1\nPORT=0\nCODEX_APP_SERVER_URL=ws://127.0.0.1:${upstream.address().port}\n`;
+    await writeFile(join(configDir, ".env"), config);
+    await writeFile(join(dir, ".env"), "PORT=invalid\n");
+    run("config", "init");
+    assert.equal(await readFile(join(configDir, ".env"), "utf8"), config);
+    const child = spawn(cli, [], {
+      cwd: dir,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    t.after(async () => {
+      if (child.exitCode !== null) return;
+      const exit = once(child, "exit");
+      child.kill();
+      await exit;
+    });
+    const url = await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code) =>
+        reject(new Error(`网页进程提前退出：${code}`)),
+      );
+      child.stdout.on("data", (bytes) => {
+        const match = bytes.toString().match(/http:\/\/127\.0\.0\.1:\d+/);
+        if (match) resolve(match[0]);
+      });
+    });
+    let initialized;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const response = await fetch(url + "/healthz");
+      if (response.status === 200) {
+        initialized = await response.json();
+        break;
+      }
+      await delay(20);
+    }
+    assert.deepEqual(initialized, { ready: true });
+    assert.match(await (await fetch(url)).text(), /<html/);
+    assert.equal((await fetch(url + "/app.js")).status, 200);
+    assert.equal((await fetch(url + "/style.css")).status, 200);
+
+    const fakeBin = join(dir, "fake-bin");
+    await mkdir(fakeBin);
+    env.SERVICE_TEST_LOG = join(dir, "service.log");
+    env.PATH = `${fakeBin}:${dirname(process.execPath)}:${process.env.PATH}`;
+    for (const name of ["systemctl", "systemd-analyze", "codex"])
+      await writeFile(
+        join(fakeBin, name),
+        '#!/bin/sh\nprintf "%s %s\\n" "$0" "$*" >> "$SERVICE_TEST_LOG"\n',
+        { mode: 0o755 },
+      );
+    run("service", "install");
+    const units = join(env.XDG_CONFIG_HOME, "systemd/user");
+    const web = await readFile(join(units, "codex-lan-web.service"), "utf8");
+    assert.ok(
+      web.includes(
+        join(prefix, "lib/node_modules/codex-web/bin/codex-web.mjs"),
+      ),
+    );
+    assert.ok(web.includes(`CODEX_WEB_CONFIG_DIR=${configDir}`));
+    assert.match(web, /Wants=codex-app-server.service/);
+    const backendPath = join(units, "codex-app-server.service");
+    const backend = await readFile(backendPath, "utf8");
+    assert.ok(backend.includes(`ws://127.0.0.1:${upstream.address().port}`));
+    assert.ok(backend.includes(join(fakeBin, "codex")));
+    await writeFile(backendPath, "# existing backend configuration\n");
+    run("service", "install");
+    assert.equal(
+      await readFile(backendPath, "utf8"),
+      "# existing backend configuration\n",
+    );
+    assert.equal(await readFile(join(configDir, ".env"), "utf8"), config);
+    run("service", "status");
+    const log = await readFile(env.SERVICE_TEST_LOG, "utf8");
+    assert.match(
+      log,
+      /--user enable --now codex-app-server.service codex-lan-web.service/,
+    );
+    assert.ok(!log.includes(" restart "));
+
+    const sourceConfig = join(dir, "source-config");
+    execFileSync(
+      process.execPath,
+      [join(root, "scripts/install-services.mjs")],
+      {
+        cwd: dir,
+        env: { ...env, XDG_CONFIG_HOME: sourceConfig },
+        stdio: "pipe",
+      },
+    );
+    const sourceWeb = await readFile(
+      join(sourceConfig, "systemd/user/codex-lan-web.service"),
+      "utf8",
+    );
+    assert.ok(sourceWeb.includes(join(root, "server/src/server.mjs")));
+    assert.ok(!sourceWeb.includes("CODEX_WEB_CONFIG_DIR="));
+  },
+);
