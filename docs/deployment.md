@@ -45,7 +45,7 @@ curl http://127.0.0.1:8766/healthz
 
 `.github/workflows/release.yml` 在推送 `v*` 标签时运行。流程执行 `npm run release:check`，核对根包、workspaces、锁文件、当前干净标签、变更日志、发布说明和安装链接，安装依赖并执行 `npm run check`，随后将带有构建来源的预构建 npm 包和 SHA-256 文件上传为正式 Release。发布说明读取 `docs/releases/标签名.md`。发布权限使用仓库工作流的 `GITHUB_TOKEN`，权限范围为 `contents: write`。
 
-日常提交保持当前包版本，有实际影响的变更先记入 `CHANGELOG.md` 的“未发布”。发布时依据整个批次选择版本，执行 `npm run version:prepare -- patch`（或 `minor`、`major`、明确版本），审阅生成的发布说明，补充安装、升级或迁移信息，完成 `npm run check` 并提交。随后用实际版本替换下面的 `X.Y.Z`：
+日常提交保持当前包版本，有实际影响的变更先记入 `CHANGELOG.md` 的“未发布”。发布时依据整个批次选择版本，执行 `npm run version:prepare -- patch`（或 `minor`、`major`、明确版本），审阅生成的发布说明，补充安装、升级或迁移信息。将 `GITHUB_REF_NAME` 设为本次标签，执行 `npm run check` 并提交。随后用实际版本替换下面的 `X.Y.Z`：
 
 ```bash
 git tag -a vX.Y.Z -m "Codex Web vX.Y.Z"

@@ -45,7 +45,7 @@ v2.0.0 标签上的干净代码             2.0.0                    正式发�
 
 1. 审阅未发布条目，按整个批次的兼容性影响选择版本。
 2. 执行 `npm run version:prepare -- patch`、`minor`、`major` 或明确的 `X.Y.Z`。命令同步包版本和锁文件，归档未发布条目并保留空的未发布区域，生成 `docs/releases/vX.Y.Z.md`，更新 README 和部署文档的当前下载版本。该命令只修改文件。
-3. 审阅新建发布说明，按本次交付补充安装、升级和迁移信息；执行 `npm run check`，完成发布提交。
+3. 审阅新建发布说明，按本次交付补充安装、升级和迁移信息；将 `GITHUB_REF_NAME` 设为本次标签执行 `npm run check`，覆盖 GitHub Actions 的标签环境，完成发布提交。
 4. 在干净的发布提交上创建与根包版本相符的附注标签，执行 `npm run release:check`，再推送发布提交与标签。GitHub Actions 复核版本、来源和文档，执行完整检查，然后构建并上传 npm 包及 SHA-256 文件。
 5. 核对 Actions、Release 附件和下载链接，按部署文档验证校验和与全局安装。紧急修复沿用相同流程，可以只包含一项修复。
 
@@ -53,7 +53,7 @@ v2.0.0 标签上的干净代码             2.0.0                    正式发�
 
 ```bash
 npm run version:prepare -- X.Y.Z
-npm run check
+GITHUB_REF_NAME=vX.Y.Z npm run check
 # 审阅并提交发布准备后的文件，然后执行：
 git tag -a vX.Y.Z -m "Codex Web vX.Y.Z"
 npm run release:check

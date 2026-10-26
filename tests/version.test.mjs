@@ -83,7 +83,7 @@ test("正式标签、日常提交及已暂存和未跟踪修改分别标识来�
   initialize(dir);
   assert.equal(readVersion(dir).displayVersion, "1.2.3");
   assert.equal(readVersion(dir).channel, "release");
-  assert.equal(checkRelease(dir), "1.2.3");
+  assert.equal(checkRelease(dir, "v1.2.3"), "1.2.3");
   await writeFile(join(dir, "README.md"), "changed\n");
   git(dir, "add", "README.md");
   assert.equal(readVersion(dir).dirty, true);
@@ -95,7 +95,7 @@ test("正式标签、日常提交及已暂存和未跟踪修改分别标识来�
     `1.2.3+dev.g${git(dir, "rev-parse", "HEAD").slice(0, 7)}`,
   );
   assert.equal(info.channel, "development");
-  assert.throws(() => checkRelease(dir), /干净的 Git/);
+  assert.throws(() => checkRelease(dir, "v1.2.3"), /干净的 Git/);
   await writeFile(join(dir, "untracked.txt"), "local change\n");
   assert.match(readVersion(dir).displayVersion, /\.dirty$/);
 });
@@ -143,14 +143,14 @@ test("版本准备同步包与锁文件、汇总未发布内容并更新安装�
   assert.throws(() => prepareVersion(dir, "1.2.4"), /大于当前版本/);
   assert.throws(() => prepareVersion(dir, "01.3.1"), /用法/);
   assert.throws(() => checkRelease(dir, "v1.2.3"), /发布标签必须匹配/);
-  assert.throws(() => checkRelease(dir), /干净的 Git/);
+  assert.throws(() => checkRelease(dir, "v1.3.0"), /干净的 Git/);
   commit(dir);
   git(dir, "tag", "v1.3.0");
-  assert.equal(checkRelease(dir), "1.3.0");
+  assert.equal(checkRelease(dir, "v1.3.0"), "1.3.0");
   await writeFile(join(dir, "docs/releases/v1.3.0.md"), "# wrong\n");
   commit(dir);
   git(dir, "tag", "-f", "v1.3.0");
-  assert.throws(() => checkRelease(dir), /标题需要匹配/);
+  assert.throws(() => checkRelease(dir, "v1.3.0"), /标题需要匹配/);
 });
 
 test("版本检查拒绝 workspace 和锁文件漂移", async (t) => {
