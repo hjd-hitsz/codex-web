@@ -15,10 +15,10 @@
 
 发行包内包含已构建的网页和运行所需的桥接代码，目标机器无需克隆源码或构建前端。后台自启动使用 Linux systemd 用户服务；先在目标机器安装 Node.js 24+、npm、Codex CLI 和 zsh，并完成该机器的 Codex 登录。
 
-项目尚未发布到 npm registry。目前可以将打包生成的 `codex-web-2.0.0.tgz` 复制到目标机器后安装：
+从 [GitHub Release v2.0.0](https://github.com/hjd-hitsz/codex-web/releases/tag/v2.0.0) 安装，npm 会直接下载预构建安装包：
 
 ```bash
-npm install -g ./codex-web-2.0.0.tgz
+npm install -g https://github.com/hjd-hitsz/codex-web/releases/download/v2.0.0/codex-web-2.0.0.tgz
 codex-web service install
 loginctl enable-linger "$USER"
 codex-web service status
@@ -28,7 +28,7 @@ codex-web service status
 
 服务启动后访问 `http://电脑IP:8766`，本机可访问 `http://127.0.0.1:8766`。安装命令会创建并启用后端和网页服务，保留已有的 Codex 后端配置；当前已运行的服务继续运行。首次连接可通过 `curl http://127.0.0.1:8766/healthz` 检查。
 
-发布到 npm registry 后，安装命令可简化为 `npm install -g codex-web`，其余部署步骤相同。发布流程见 [部署与维护](docs/deployment.md)。
+也可以下载 Release 附件 `codex-web-2.0.0.tgz` 后执行 `npm install -g ./codex-web-2.0.0.tgz`。附件中的 `.sha256` 文件用于校验下载内容；GitHub 自动生成的 Source code 附件用于源码开发。项目通过 GitHub Release 分发，npm registry 发布状态为未发布。发布和升级流程见 [部署与维护](docs/deployment.md)。
 
 常用命令：
 

@@ -2,7 +2,7 @@
 
 ## 发行包与迁移
 
-当前源码支持打包为全局 npm 工具。项目尚未发布到 npm registry，维护者可先构建可迁移的发行包：
+预构建 npm 安装包通过 [GitHub Releases](https://github.com/hjd-hitsz/codex-web/releases) 分发。目标机器可以直接从 Release URL 安装，无需 npm registry 发布。维护者也可以从源码构建发行包：
 
 ```bash
 npm ci
@@ -12,10 +12,10 @@ npm pack
 
 `npm pack` 的 `prepack` 会重新构建网页，生成 `codex-web-2.0.0.tgz`。包内包含命令行入口、前端构建资源、桥接代码和运行脚本；通过 `files` 白名单排除开发源码、测试、聊天数据和实际环境配置。运行依赖由 npm 安装，目标机器需要能获取 npm 依赖或具备相应缓存。
 
-将 `.tgz` 复制到已配置 Node.js 24+、Codex CLI、zsh 和 systemd 的 Linux 机器，以运行 Codex 的用户完成本机 Codex 登录，然后执行：
+在已配置 Node.js 24+、Codex CLI、zsh 和 systemd 的 Linux 机器，以运行 Codex 的用户完成本机 Codex 登录，然后执行：
 
 ```bash
-npm install -g ./codex-web-2.0.0.tgz
+npm install -g https://github.com/hjd-hitsz/codex-web/releases/download/v2.0.0/codex-web-2.0.0.tgz
 codex-web service install
 loginctl enable-linger "$USER"
 codex-web service status
@@ -23,6 +23,8 @@ curl http://127.0.0.1:8766/healthz
 ```
 
 `service install` 创建缺失的后端服务并安装网页服务，启用两者的自启动；已有后端服务继续使用原配置。`enable-linger` 由系统授权策略决定是否需要管理员操作，使用户服务可在开机后、登录前启动。目标机器的防火墙需允许访问网页端口。
+
+也可以下载或复制 Release 中的 `.tgz` 文件，以 `npm install -g ./codex-web-2.0.0.tgz` 安装。将 `.tgz.sha256` 校验文件放到同一目录，执行 `sha256sum -c codex-web-2.0.0.tgz.sha256` 可核对内容。GitHub 自动生成的 Source code 附件包含源码，预构建 npm 安装包位于 `.tgz` 附件中。
 
 全局安装支持以下命令：
 
@@ -37,6 +39,19 @@ curl http://127.0.0.1:8766/healthz
 更新全局安装时，先安装新版包，再执行 `codex-web service install` 更新服务中的安装路径，最后执行 `codex-web service restart-when-idle`。切换 Node.js 版本或 npm prefix 后也采用此流程。全局安装与源码部署使用相同服务名，一台机器同一用户使用一套部署；从源码切换到全局包时，将需要保留的 `.env` 配置迁移到用户配置目录。
 
 向 npm registry 发布需要维护者拥有包名发布权限并完成 npm 身份验证。确认包名和内容后执行 `npm publish ./codex-web-2.0.0.tgz --access public`；发布成功后其他机器即可使用 `npm install -g codex-web`。若选择作用域包名，应先修改根 `package.json` 的 `name` 并更新锁文件，再重新验证和打包；命令名仍为 `codex-web`。
+
+## 发布 GitHub Release
+
+`.github/workflows/release.yml` 在推送 `v*` 标签时运行。流程核对标签与根 `package.json` 的版本，安装依赖并执行 `npm run check`，随后将预构建 npm 包和 SHA-256 文件上传为正式 Release。发布说明读取 `docs/releases/标签名.md`。发布权限使用仓库工作流的 `GITHUB_TOKEN`，权限范围为 `contents: write`。
+
+发布新版本时，更新根包及 workspaces 的版本与锁文件、安装文档中的版本和下载链接，添加对应的发布说明，完成检查并提交后推送版本标签，例如：
+
+```bash
+git tag -a v2.0.0 -m "Codex Web v2.0.0"
+git push origin main v2.0.0
+```
+
+标签对应的 Release 版本应保持固定，后续改动使用新版本号。发布后检查 Actions 结果、Release 附件以及 README 安装地址，并下载附件验证校验和与全局安装。
 
 ## 配置
 
