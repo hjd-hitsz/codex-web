@@ -1042,6 +1042,16 @@ p {
   margin-bottom: 8px;
   color: var(--fg);
 }
+.process-preview {
+  margin-top: 2px;
+  padding-block: 0;
+}
+.process-preview > :first-child {
+  margin-top: 0;
+}
+.process-preview > :last-child {
+  margin-bottom: 0;
+}
 .translation-status,
 .translation-retry {
   color: var(--muted);
