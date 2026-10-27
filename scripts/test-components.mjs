@@ -29,9 +29,21 @@ try {
     platform: "node",
     format: "esm",
     outfile: cache + "/client.mjs",
-    external: ["react", "react-dom"],
+    external: ["react", "react-dom/client"],
     loader: { ".css": "empty" },
     plugins: [
+      {
+        name: "portal-fixture",
+        setup(builder) {
+          builder.onResolve({ filter: /^react-dom$/ }, () => ({
+            path: "react-dom",
+            namespace: "portal-fixture",
+          }));
+          builder.onLoad({ filter: /.*/, namespace: "portal-fixture" }, () => ({
+            contents: "export const createPortal = (children) => children;",
+          }));
+        },
+      },
       {
         name: "mermaid-fixture",
         setup(builder) {

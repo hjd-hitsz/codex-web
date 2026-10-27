@@ -60,6 +60,8 @@ import { UserInputForm } from "./user-input";
 import { ServiceTierToggle } from "./service-tier-toggle";
 import { ReasoningEffortControl } from "./reasoning-effort";
 import { MermaidBlock } from "./mermaid-block";
+import { MessageImage } from "./message-image";
+import { messageUrlTransform } from "./image-source";
 
 function mathDelimiters(text) {
   return (text || "")
@@ -82,6 +84,7 @@ export function RichText({ text }) {
   return (
     <div className="markdown">
       <Markdown
+        urlTransform={messageUrlTransform}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           rehypeKatex,
@@ -104,6 +107,7 @@ export function RichText({ text }) {
             </a>
           ),
           pre: CodeBlock,
+          img: MessageImage,
         }}
       >
         {mathDelimiters(text)}
@@ -140,8 +144,8 @@ function Content({ content }) {
           </div>
         ) : c.type === "image" || c.type === "localImage" ? (
           <div key={i} className="message-image">
-            {c.url ? (
-              <img src={c.url} alt="图片附件" />
+            {c.url || c.path ? (
+              <MessageImage src={c.url || c.path} alt="图片附件" />
             ) : (
               <span>
                 <Paperclip size={14} />

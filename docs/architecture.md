@@ -19,6 +19,10 @@ Node.js 网页桥接服务
 
 `chat.jsx` 的 `RichText` 使用 React Markdown 渲染 GFM、数学公式与代码高亮，将 `mermaid` 代码块交给 `mermaid-block.jsx`。图表源码稳定 250 毫秒后按需加载 Mermaid，`mermaid-renderer.js` 串行配置主题并绘制 SVG，使用 `securityLevel: strict` 和 `suppressErrorRendering: true`，临时绘制节点在成功或失败后清理。图表跟随网页及系统的深浅主题；源码或主题变化时忽略旧请求的迟到结果。绘制期间和解析失败时保留源码，成功后提供图表与源码切换及源码复制。渲染器和各图表模块随网页打包，通过本站加载。
 
+`message-image.jsx` 处理 Markdown 图片和历史 `localImage` 附件。`image-source.js` 将绝对路径、`file:`、`sandbox:` 以及相对工作目录的图片引用解析为本机路径；组件通过已有的 `fs/readFile` RPC 读取 Base64 数据，并按图片类型构造 Data URL。相对路径优先使用当前对话的 `cwd`，随后使用已选目录或默认目录。加载失败或浏览器解码失败时显示提示和重试按钮，断线后随重连重读，路径切换及卸载后忽略迟到响应。HTTP、HTTPS 与协议相对地址直接交给浏览器；Markdown URL 过滤仅对图片放行本地 URI 和指定类型的 Base64 图片，其余沿用 React Markdown 的默认规则。
+
+消息图片统一放在原生按钮中，以最大 320 × 240 像素的等比缩略图显示。点击后由 `image-viewer.jsx` 通过 React Portal 将原生 `dialog` 挂到页面根部，使用 `showModal()` 管理模态焦点和背景交互。大图默认适应窗口，支持点击图片或工具栏切换到可滚动的原始尺寸；关闭按钮、Esc 和空白区域均可关闭，关闭后将焦点还给仍在页面中的缩略图。图片地址变化时关闭旧预览，流式正文更新保持当前预览；图片按钮拦截外层链接的默认跳转。
+
 侧栏每条对话右侧常显归档按钮与三点菜单，归档视图将直接操作切换为恢复。直接操作与菜单共用 `store.js` 的 `archive` 流程，完成后刷新列表，失败时显示错误提示；标题、时间和操作按钮分别占用布局空间，长标题自动截断。
 
 `store.js` 维护共享状态和 JSON-RPC 连接，处理历史加载、实时通知及重连。请求发送前统一经过 `execution-policy.js`：对话生命周期和任务使用完全访问、无需审批，直接命令使用完全访问沙箱策略。
@@ -87,4 +91,4 @@ Vite 在构建时把版本信息和构建时间同时写入前端常量及根目
 - `tests/package.test.mjs`：将真实发行包安装到临时全局 prefix，使用模拟后端和服务命令验证命令入口、用户配置、网页资源及 systemd 服务生成。
 - `tests/version.test.mjs`：在临时 Git 仓库验证正式标签、开发提交、未提交修改、安装包来源、版本准备及发布校验。
 
-组件测试通过 esbuild 生成临时测试模块，替换 WebSocket、终端与 Mermaid 渲染器、浏览器存储等外部边界。`tests/components/mermaid.mjs` 验证图表与源码切换、复制、流式更新、迟到结果、错误恢复、多图串行、主题切换和临时节点清理，并检查普通代码与数学公式仍可渲染。测试缓存位于 `.cache/component-tests`，运行后清理。
+组件测试通过 esbuild 生成临时测试模块，替换 WebSocket、终端与 Mermaid 渲染器、浏览器存储等外部边界。`tests/components/mermaid.mjs` 验证图表与源码切换、复制、流式更新、迟到结果、错误恢复、多图串行、主题切换和临时节点清理，并检查普通代码与数学公式仍可渲染。`tests/components/message-image.mjs` 验证本地图片与历史附件加载、路径切换、失败重试、断线恢复、外部图片、大图打开、尺寸切换、各关闭入口与焦点恢复；Portal 和原生对话框通过浏览器边界模拟，并在浏览器中验证实际布局和焦点行为。URL 过滤与路径规则由 `client/tests/image-source.test.js` 验证。测试缓存位于 `.cache/component-tests`，运行后清理。

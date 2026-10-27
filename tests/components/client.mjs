@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { create } from "react-test-renderer";
 import { setTimeout as delay } from "node:timers/promises";
 import { testMermaid } from "./mermaid.mjs";
+import { testMessageImages } from "./message-image.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -35,8 +36,7 @@ globalThis.WebSocket = class {
     const m = JSON.parse(raw);
     requests.push(m);
     if (!m.method || m.method === "command/exec") return;
-    const result = responseFor(m);
-    queueMicrotask(() =>
+    Promise.resolve(responseFor(m)).then((result) =>
       this.onmessage({
         data: JSON.stringify({
           id: m.id,
@@ -57,6 +57,18 @@ const app = await import(
   pathToFileURL(process.env.CODEX_COMPONENT_BUNDLE).href
 );
 await testMermaid(app);
+{
+  const previousResponse = responseFor;
+  try {
+    await testMessageImages(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+    );
+  } finally {
+    responseFor = previousResponse;
+  }
+}
 {
   const models = [
     {
