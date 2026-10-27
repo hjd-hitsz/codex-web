@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { testMermaid } from "./mermaid.mjs";
 import { testMessageImages } from "./message-image.mjs";
 import { testThreadAccess } from "./thread-access.mjs";
+import { testThreadArchive } from "./thread-archive.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -62,6 +63,12 @@ await testMermaid(app);
   const previousResponse = responseFor;
   try {
     await testThreadAccess(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
+    await testThreadArchive(
       app,
       requests,
       (respond) => (responseFor = respond),

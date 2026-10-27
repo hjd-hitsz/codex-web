@@ -116,6 +116,7 @@ export function onEvent(fn) {
   return () => eventListeners.delete(fn);
 }
 export function report(error) {
+  if (error?.archivedThreadId) return;
   set({ error: error?.message || String(error) });
 }
 export function notice(text) {
@@ -148,7 +149,13 @@ export function rpc(method, params = {}, timeout = 120000) {
           reject(new Error("请求等待超时，请刷新会话查看任务状态。"));
         }, timeout)
       : null;
-    pending.set(id, { resolve, reject, timer });
+    pending.set(id, {
+      resolve,
+      reject,
+      timer,
+      threadId: params.threadId,
+      opening,
+    });
     socket.send(
       JSON.stringify({ id, method, params: fullAccessParams(method, params) }),
     );
@@ -206,7 +213,21 @@ function connect() {
       if (p) {
         clearTimeout(p.timer);
         pending.delete(m.id);
-        m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result);
+        if (m.error) {
+          const error = new Error(m.error.message);
+          const archived = /^(?:session|thread)\s+(\S+)\s+is archived\b/i.exec(
+            error.message,
+          );
+          if (p.threadId && archived?.[1] === p.threadId) {
+            error.archivedThreadId = p.threadId;
+            if (
+              p.opening === opening ||
+              (state.threadAccess?.threadId || state.current?.id) !== p.threadId
+            )
+              syncArchivedThread(p.threadId);
+          }
+          p.reject(error);
+        } else p.resolve(m.result);
       }
       return;
     }
@@ -517,6 +538,14 @@ function handle({ method, params: p = {} }) {
     forgetThread(p.threadId);
     return;
   }
+  if (method === "thread/archived") {
+    syncArchivedThread(p.threadId);
+    return;
+  }
+  if (method === "thread/unarchived") {
+    loadThreads().catch(() => {});
+    return;
+  }
   if (method === "lan/terminalStarted")
     set({
       terminals: {
@@ -747,7 +776,8 @@ export async function sendMessage(
     loadThreads().catch(() => {});
     return true;
   } catch (e) {
-    set({ items: state.items.filter((i) => !i.optimistic) });
+    if (state.current?.id === thread?.id)
+      set({ items: state.items.filter((i) => !i.optimistic) });
     if (/already has an active writer/i.test(e.message)) {
       if (state.current?.id === thread?.id)
         set({
@@ -788,6 +818,28 @@ export async function archive(thread) {
     await openThread(thread.id);
   }
   await loadThreads();
+}
+function syncArchivedThread(id) {
+  pendingForks = pendingForks.filter((value) => value !== id);
+  persist("cx-pending-forks", pendingForks);
+  if ((state.threadAccess?.threadId || state.current?.id) === id) newChat();
+  else if (state.current?.id === id)
+    set({ current: null, items: [], historyCursor: null });
+  if (localStorage.getItem("cx-current") === id)
+    localStorage.removeItem("cx-current");
+  const active = { ...state.active };
+  delete active[id];
+  set({
+    active,
+    threads: state.archived
+      ? state.threads
+      : state.threads.filter((thread) => thread.id !== id),
+    questions: state.questions.filter(
+      (question) => question.params?.threadId !== id,
+    ),
+    modal: state.modal?.thread?.id === id ? null : state.modal,
+  });
+  loadThreads().catch(() => {});
 }
 function forgetThread(id) {
   threadOrdering.forget(id);
