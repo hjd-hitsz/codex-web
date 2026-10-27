@@ -123,7 +123,7 @@ async function close(socket) {
 
 for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
   test(
-    `${method} 在关闭页面后释放实际返回的对话`,
+    `${method} 在页面保持打开时释放已持久化的空闲对话`,
     { timeout: 10000 },
     async (t) => {
       const app = await bridge(t);
@@ -136,11 +136,16 @@ for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
         app.requests.find((request) => request.method === method).params.config,
         { model: "fixture-model", thread_unload_delay_secs: 0 },
       );
-      await close(client);
+      if (method === "thread/start") {
+        assert.equal(app.unsubscribed().length, 0);
+        await app.rpc(client, "turn/start", { threadId: thread.id, input: [] });
+      }
       const [request] = await waitFor(
         () => app.unsubscribed().length && app.unsubscribed(),
       );
       assert.deepEqual(request.params, { threadId: thread.id });
+      await close(client);
+      assert.equal(app.unsubscribed().length, 1);
     },
   );
 
@@ -169,10 +174,24 @@ for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
 }
 
 test(
-  "多个页面共享对话，最后一个订阅退出后才释放",
+  "多个页面共享运行中的对话，完成后在页面保持打开时释放",
   { timeout: 10000 },
   async (t) => {
-    const app = await bridge(t);
+    const app = await bridge(t, (request, upstream) => {
+      if (request.method !== "thread/resume") return false;
+      upstream.send(
+        JSON.stringify({
+          id: request.id,
+          result: {
+            thread: {
+              id: "shared",
+              status: { type: "active", activeFlags: [] },
+            },
+          },
+        }),
+      );
+      return true;
+    });
     const first = await app.connect(),
       second = await app.connect();
     await app.rpc(first, "thread/resume", { threadId: "shared" });
@@ -182,8 +201,11 @@ test(
     await close(first);
     await app.rpc(second, "test/barrier");
     assert.equal(app.unsubscribed().length, 0);
-    await app.rpc(second, "thread/unsubscribe", { threadId: "shared" });
-    assert.equal(app.unsubscribed().length, 1);
+    app.notify("thread/status/changed", {
+      threadId: "shared",
+      status: { type: "idle" },
+    });
+    await waitFor(() => app.unsubscribed().length === 1);
     await close(second);
     assert.equal(app.unsubscribed().length, 1);
   },
@@ -193,11 +215,21 @@ test(
   "页面关闭后任务继续，轮次完成时自动释放",
   { timeout: 10000 },
   async (t) => {
-    const app = await bridge(t);
+    const app = await bridge(t, (request, upstream) => {
+      if (request.method !== "turn/start") return false;
+      upstream.send(
+        JSON.stringify({
+          id: request.id,
+          result: {
+            turn: { id: "turn", status: "inProgress" },
+          },
+        }),
+      );
+      return true;
+    });
     const client = await app.connect(),
       observer = await app.connect();
-    await app.rpc(client, "thread/resume", { threadId: "running" });
-    app.notify("turn/started", { threadId: "running", turn: { id: "turn" } });
+    await app.rpc(client, "turn/start", { threadId: "running", input: [] });
     await app.rpc(client, "test/barrier");
     await close(client);
     app.notify("thread/status/changed", {
@@ -249,7 +281,6 @@ test(
     const app = await bridge(t, (request) => request.method === "turn/start");
     const client = await app.connect(),
       observer = await app.connect();
-    await app.rpc(client, "thread/resume", { threadId: "starting" });
     client.send(
       JSON.stringify({
         id: 99,
@@ -329,7 +360,40 @@ test("恢复失败的对话保持原订阅状态", { timeout: 10000 }, async (t)
   assert.equal(app.unsubscribed().length, 0);
 });
 
-test("后端重连后重建订阅并在页面断连时释放", { timeout: 10000 }, async (t) => {
+test(
+  "新建空对话在首次发送失败后保留，成功发送后释放",
+  { timeout: 10000 },
+  async (t) => {
+    let fails = true;
+    const app = await bridge(t, (request, upstream) => {
+      if (request.method !== "turn/start" || !fails) return false;
+      upstream.send(
+        JSON.stringify({
+          id: request.id,
+          error: { code: -32000, message: "fixture send failure" },
+        }),
+      );
+      return true;
+    });
+    const client = await app.connect();
+    const { thread } = await app.rpc(client, "thread/start");
+    await assert.rejects(
+      app.rpc(client, "turn/start", { threadId: thread.id }),
+      /fixture send failure/,
+    );
+    assert.equal(app.unsubscribed().length, 0);
+    fails = false;
+    await app.rpc(client, "turn/start", { threadId: thread.id });
+    await waitFor(() => app.unsubscribed().length);
+    assert.equal(
+      app.requests.filter((request) => request.method === "thread/resume")
+        .length,
+      0,
+    );
+  },
+);
+
+test("后端重连后恢复空闲对话仍即时释放", { timeout: 10000 }, async (t) => {
   let upstream;
   const app = await bridge(t, (request, socket) => {
     upstream = socket;
@@ -348,21 +412,144 @@ test("后端重连后重建订阅并在页面断连时释放", { timeout: 10000 
   await app.rpc(client, "thread/resume", { threadId: "reconnected" });
   await close(client);
   await waitFor(() => app.unsubscribed().length);
-  assert.equal(app.unsubscribed().length, 1);
+  assert.equal(app.unsubscribed().length, 2);
 });
 
-test("断网由 WebSocket 心跳识别并释放订阅", { timeout: 75000 }, async (t) => {
-  const app = await bridge(t);
-  const client = await app.connect();
-  await app.rpc(client, "thread/resume", { threadId: "offline" });
-  client.pong = () => {};
-  await waitForHeartbeat();
-  assert.deepEqual(app.unsubscribed()[0].params, { threadId: "offline" });
-  async function waitForHeartbeat() {
-    for (let attempt = 0; attempt < 65; attempt++) {
-      if (app.unsubscribed().length) return;
-      await delay(1000);
-    }
-    assert.fail("心跳超时后未释放对话");
-  }
-});
+test(
+  "断网由心跳识别，运行任务完成后释放订阅",
+  { timeout: 75000 },
+  async (t) => {
+    const app = await bridge(t, (request, upstream) => {
+      if (request.method !== "turn/start") return false;
+      upstream.send(
+        JSON.stringify({
+          id: request.id,
+          result: {
+            turn: { id: "offline-turn", status: "inProgress" },
+          },
+        }),
+      );
+      return true;
+    });
+    const client = await app.connect();
+    await app.rpc(client, "turn/start", { threadId: "offline", input: [] });
+    client.pong = () => {};
+    await once(client, "close");
+    assert.equal(app.unsubscribed().length, 0);
+    app.notify("turn/completed", {
+      threadId: "offline",
+      turn: { id: "offline-turn", status: "completed" },
+    });
+    await waitFor(() => app.unsubscribed().length);
+    assert.deepEqual(app.unsubscribed()[0].params, { threadId: "offline" });
+  },
+);
+
+for (const method of ["turn/start", "thread/compact/start", "review/start"]) {
+  test(
+    `${method} 在写入前恢复空闲对话，请求完成后释放`,
+    { timeout: 10000 },
+    async (t) => {
+      const app = await bridge(t, (request) => request.method === method);
+      const client = await app.connect();
+      const result = app.rpc(client, method, {
+        threadId: "write-thread",
+        input: [],
+      });
+      const write = await waitFor(() =>
+        app.requests.find((request) => request.method === method),
+      );
+      const resume = app.requests.find(
+        (request) => request.method === "thread/resume",
+      );
+      assert.equal(resume.params.threadId, "write-thread");
+      assert.equal(resume.params.approvalPolicy, "never");
+      assert.equal(resume.params.sandbox, "danger-full-access");
+      assert.equal(app.unsubscribed().length, 0);
+      app.respond(write, {});
+      await result;
+      await waitFor(() => app.unsubscribed().length);
+      await app.rpc(client, "test/barrier");
+      assert.equal(app.unsubscribed().length, 1);
+    },
+  );
+}
+
+test(
+  "另一端持有写入权时保留错误且不发送轮次，释放后可重试",
+  { timeout: 10000 },
+  async (t) => {
+    let locked = true;
+    const app = await bridge(t, (request, upstream) => {
+      if (request.method !== "thread/resume" || !locked) return false;
+      upstream.send(
+        JSON.stringify({
+          id: request.id,
+          error: {
+            code: -32000,
+            message: "thread fixture already has an active writer",
+          },
+        }),
+      );
+      return true;
+    });
+    const client = await app.connect();
+    await assert.rejects(
+      app.rpc(client, "turn/start", { threadId: "locked" }),
+      /active writer/,
+    );
+    assert.equal(
+      app.requests.filter((request) => request.method === "turn/start").length,
+      0,
+    );
+    assert.equal(app.unsubscribed().length, 0);
+    locked = false;
+    await app.rpc(client, "turn/start", { threadId: "locked" });
+    assert.equal(
+      app.requests.filter((request) => request.method === "turn/start").length,
+      1,
+    );
+    await waitFor(() => app.unsubscribed().length);
+  },
+);
+
+test(
+  "并发写入同一空闲对话共用恢复请求，恢复期间保留写入权",
+  { timeout: 10000 },
+  async (t) => {
+    const app = await bridge(
+      t,
+      (request) =>
+        request.method === "thread/resume" || request.method === "turn/start",
+    );
+    const first = await app.connect(),
+      second = await app.connect();
+    const writes = [
+      app.rpc(first, "turn/start", { threadId: "concurrent" }),
+      app.rpc(second, "turn/start", { threadId: "concurrent" }),
+    ];
+    const resume = await waitFor(() =>
+      app.requests.find((request) => request.method === "thread/resume"),
+    );
+    await app.rpc(first, "test/barrier");
+    await app.rpc(second, "test/barrier");
+    assert.equal(
+      app.requests.filter((request) => request.method === "thread/resume")
+        .length,
+      1,
+    );
+    app.respond(resume, {
+      thread: { id: "concurrent", status: { type: "idle" } },
+    });
+    const requests = await waitFor(() => {
+      const requests = app.requests.filter(
+        (request) => request.method === "turn/start",
+      );
+      return requests.length === 2 && requests;
+    });
+    assert.equal(app.unsubscribed().length, 0);
+    for (const request of requests) app.respond(request, {});
+    await Promise.all(writes);
+    await waitFor(() => app.unsubscribed().length);
+  },
+);

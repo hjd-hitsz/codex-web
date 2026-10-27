@@ -5,6 +5,7 @@ import { create } from "react-test-renderer";
 import { setTimeout as delay } from "node:timers/promises";
 import { testMermaid } from "./mermaid.mjs";
 import { testMessageImages } from "./message-image.mjs";
+import { testThreadAccess } from "./thread-access.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -60,6 +61,12 @@ await testMermaid(app);
 {
   const previousResponse = responseFor;
   try {
+    await testThreadAccess(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
     await testMessageImages(
       app,
       requests,
@@ -97,7 +104,7 @@ await testMermaid(app);
       return { config: { model: models[0].model, service_tier: "priority" } };
     if (method === "lan/projectless/read") return { directories: {} };
     if (method === "thread/start") return { thread };
-    if (method === "thread/resume")
+    if (method === "thread/resume" || method === "thread/read")
       return { thread, model: models[0].model, serviceTier: resumedTier };
     if (method === "turn/start" && turnFails)
       return { error: { message: "模拟发送失败" } };
@@ -513,7 +520,8 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
     }
     if (method === "thread/start")
       return startFails ? { error: { message: "创建暂时失败" } } : { thread };
-    if (method === "thread/resume") return { thread, cwd: thread.cwd };
+    if (method === "thread/resume" || method === "thread/read")
+      return { thread, cwd: thread.cwd };
     if (method === "thread/list")
       return { data: [{ ...thread, threadSource: null }] };
     if (method === "thread/turns/list" || method === "thread/items/list")
@@ -593,7 +601,7 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
   let turnFails = true;
   let onSend = () => {};
   responseFor = ({ method }) => {
-    if (method === "thread/start" || method === "thread/resume")
+    if (["thread/start", "thread/resume", "thread/read"].includes(method))
       return { thread, cwd: thread.cwd };
     if (method === "thread/list") return { data: [thread] };
     if (method === "thread/turns/list" || method === "thread/items/list")
@@ -1322,7 +1330,7 @@ responseFor = ({ method, params }) => {
       ],
       nextCursor: null,
     };
-  if (method === "thread/resume") {
+  if (method === "thread/resume" || method === "thread/read") {
     const thread = history.find((t) => t.id === params.threadId);
     thread.updatedAt = 9999;
     return { thread: { ...thread }, cwd: thread.cwd };
@@ -1417,7 +1425,7 @@ console.log(
           },
         ],
       };
-    if (method === "thread/resume")
+    if (method === "thread/resume" || method === "thread/read")
       return {
         thread: threads.find((thread) => thread.id === params.threadId),
       };

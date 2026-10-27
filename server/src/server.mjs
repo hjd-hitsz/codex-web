@@ -19,8 +19,15 @@ const activeTurns = new Map();
 const terminals = new Map();
 const subscriptions = new Map();
 const releasing = new Map();
+const resuming = new Map();
 const activeThreads = new Set();
+const unwrittenThreads = new Set();
 const threadMethods = new Set(["thread/start", "thread/resume", "thread/fork"]);
+const loadedThreadMethods = new Set([
+  "turn/start",
+  "thread/compact/start",
+  "review/start",
+]);
 let upstream;
 let ready = false;
 let sequence = 1;
@@ -32,13 +39,45 @@ function send(client, message) {
 function broadcast(message) {
   for (const client of clients.clients) send(client, message);
 }
+function callUpstream(method, params) {
+  return new Promise((resolve, reject) => {
+    const id = sequence++;
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error("恢复对话超时"));
+    }, 120000);
+    pending.set(id, { resolve, reject, timer, threadId: params.threadId });
+    send(upstream, { id, method, params });
+  });
+}
+async function resumeForWrite(threadId) {
+  if (subscriptions.has(threadId)) return;
+  if (!resuming.has(threadId)) {
+    const resume = callUpstream("thread/resume", {
+      threadId,
+      excludeTurns: true,
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+      config: { thread_unload_delay_secs: 0 },
+    })
+      .then(({ thread }) => {
+        if (!subscriptions.has(thread.id))
+          subscriptions.set(thread.id, new Set());
+        if (thread.status?.type === "active") activeThreads.add(thread.id);
+      })
+      .finally(() => resuming.delete(threadId));
+    resuming.set(threadId, resume);
+  }
+  await resuming.get(threadId);
+}
 function releaseUnusedThreads() {
   for (const [threadId, owners] of subscriptions) {
     if (
       !ready ||
-      owners.size ||
+      (unwrittenThreads.has(threadId) && owners.size) ||
       activeTurns.has(threadId) ||
       activeThreads.has(threadId) ||
+      resuming.has(threadId) ||
       releasing.has(threadId) ||
       [...pending.values()].some((request) => request.threadId === threadId)
     )
@@ -57,8 +96,10 @@ function releaseUnusedThreads() {
       });
     })
       .then((result) => {
-        if (!owners.size && subscriptions.get(threadId) === owners)
+        if (subscriptions.get(threadId) === owners) {
           subscriptions.delete(threadId);
+          unwrittenThreads.delete(threadId);
+        }
         return result;
       })
       .catch((error) => console.error("Thread unsubscribe:", error.message))
@@ -117,6 +158,7 @@ function connect() {
       if (message.method === "turn/started") {
         activeTurns.set(p.threadId, p.turn.id);
         activeThreads.add(p.threadId);
+        unwrittenThreads.delete(p.threadId);
       }
       if (
         message.method === "turn/completed" &&
@@ -136,6 +178,7 @@ function connect() {
         )
       ) {
         subscriptions.delete(p.threadId);
+        unwrittenThreads.delete(p.threadId);
         activeThreads.delete(p.threadId);
         activeTurns.delete(p.threadId);
       }
@@ -176,12 +219,15 @@ function connect() {
           subscriptions.set(thread.id, new Set());
         if (!request.timedOut && request.client.readyState === WebSocket.OPEN)
           subscriptions.get(thread.id).add(request.client);
+        if (request.method === "thread/start") unwrittenThreads.add(thread.id);
         if (thread.status?.type === "active") activeThreads.add(thread.id);
       }
       if (request.threadId && message.result?.turn?.status === "inProgress") {
         activeTurns.set(request.threadId, message.result.turn.id);
         activeThreads.add(request.threadId);
       }
+      if (!message.error && loadedThreadMethods.has(request.method))
+        unwrittenThreads.delete(request.threadId);
       if (request.processId && terminals.has(request.processId)) {
         terminals.get(request.processId).running = false;
         broadcast({
@@ -216,7 +262,9 @@ function connect() {
     activeTurns.clear();
     activeThreads.clear();
     subscriptions.clear();
+    unwrittenThreads.clear();
     releasing.clear();
+    resuming.clear();
     for (const terminal of terminals.values()) terminal.running = false;
     broadcast(state());
     setTimeout(connect, 2000);
@@ -398,6 +446,24 @@ clients.on("connection", (client) => {
         method: message.method,
         threadId,
       });
+      if (threadId && loadedThreadMethods.has(message.method)) {
+        try {
+          await resumeForWrite(threadId);
+        } catch (error) {
+          clearTimeout(timer);
+          if (pending.delete(id))
+            send(client, {
+              id: message.id,
+              error: { code: -32000, message: error.message },
+            });
+          releaseUnusedThreads();
+          return;
+        }
+        if (!pending.has(id)) {
+          releaseUnusedThreads();
+          return;
+        }
+      }
       send(upstream, { ...message, id });
     } else if (message.id !== undefined && questions.has(String(message.id))) {
       send(upstream, message);

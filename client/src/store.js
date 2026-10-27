@@ -72,6 +72,7 @@ let state = {
   plans: {},
   busy: false,
   loading: false,
+  threadWarning: "",
   error: "",
   notice: "",
   panel: null,
@@ -132,6 +133,7 @@ let socket,
   initialized = false;
 let pendingForks = saved("cx-pending-forks", []);
 const deletedThreads = new Set();
+const turnRevisions = new Map();
 const threadOrdering = createThreadOrdering(rpc);
 let listing = 0;
 export const listThreads = (params) => threadOrdering.list(params);
@@ -351,14 +353,21 @@ export function newChat(cwd = state.projectless ? "" : state.cwd) {
     attachments: [],
     error: "",
     loading: false,
+    threadWarning: "",
     sidebar: false,
   });
 }
 export async function openThread(id, { preserveServiceTier = false } = {}) {
   const epoch = ++opening;
-  set({ loading: true, error: "", sidebar: false, attachments: [] });
+  set({
+    loading: true,
+    error: "",
+    threadWarning: "",
+    sidebar: false,
+    attachments: [],
+  });
   try {
-    const r = await rpc("thread/resume", { threadId: id, excludeTurns: true });
+    const r = await rpc("thread/read", { threadId: id, includeTurns: false });
     if (epoch !== opening || deletedThreads.has(id)) return;
     const [thread] = await threadOrdering.hydrate([r.thread]);
     if (epoch !== opening || deletedThreads.has(id)) return;
@@ -375,30 +384,66 @@ export async function openThread(id, { preserveServiceTier = false } = {}) {
         state.projectlessRoot,
       ),
       projectlessCwd: null,
-      model: r.model || state.model,
-      effort: r.reasoningEffort || "",
-      serviceTier: preserveServiceTier
-        ? state.serviceTier
-        : (r.serviceTier ?? null),
+      model: thread.model || state.model,
+      effort: thread.reasoningEffort || "",
       items: [],
       historyCursor: null,
       draft: localStorage.getItem("cx-draft-" + id) || "",
     });
     localStorage.setItem("cx-current", id);
     await loadHistory(false, epoch);
+    if (epoch !== opening || deletedThreads.has(id)) return;
+    set({ loading: false });
+    let resumed = false;
+    const turnRevision = turnRevisions.get(id);
+    const selection = {
+      model: state.model,
+      effort: state.effort,
+      serviceTier: state.serviceTier,
+    };
+    try {
+      const settings = await rpc("thread/resume", {
+        threadId: id,
+        excludeTurns: true,
+      });
+      if (epoch !== opening || deletedThreads.has(id)) return;
+      resumed = true;
+      set({
+        ...(state.model === selection.model && {
+          model: settings.model || state.model,
+        }),
+        ...(state.effort === selection.effort && {
+          effort: settings.reasoningEffort || "",
+        }),
+        ...(!preserveServiceTier &&
+          state.serviceTier === selection.serviceTier && {
+            serviceTier: settings.serviceTier ?? null,
+          }),
+      });
+    } catch (error) {
+      if (epoch !== opening || deletedThreads.has(id)) return;
+      if (turnRevisions.get(id) !== turnRevision) return;
+      set({
+        threadWarning: /already has an active writer/i.test(error.message)
+          ? "正在查看已保存的记录。另一端持有写入权，发送时会重新尝试连接。"
+          : "正在查看已保存的记录。恢复对话失败：" + error.message,
+      });
+    }
     rpc("thread/turns/list", { threadId: id, limit: 20, itemsView: "summary" })
       .then((page) => {
-        if (state.current?.id === id) {
+        if (epoch === opening && state.current?.id === id) {
           const active = { ...state.active };
           const running = page.data.find((t) => t.status === "inProgress");
-          if (running) active[id] = running.id;
-          else delete active[id];
+          if (turnRevisions.get(id) === turnRevision) {
+            if (resumed && running) active[id] = running.id;
+            else delete active[id];
+          }
           set({ turns: { ...state.turns, [id]: page.data }, active });
         }
       })
       .catch(() => {});
   } catch (e) {
-    report(e);
+    if (epoch === opening) report(e);
   } finally {
     if (epoch === opening) set({ loading: false });
   }
@@ -444,6 +489,8 @@ function closeTerminal(processId) {
   set({ terminalOpen: false });
 }
 function handle({ method, params: p = {} }) {
+  if (method === "turn/started" || method === "turn/completed")
+    turnRevisions.set(p.threadId, (turnRevisions.get(p.threadId) || 0) + 1);
   if (method === "thread/deleted") {
     forgetThread(p.threadId);
     return;
@@ -664,11 +711,16 @@ export async function sendMessage(
     }
     if (r.turn?.status === "inProgress")
       set({ active: { ...state.active, [thread.id]: r.turn.id } });
+    if (state.current?.id === thread.id) set({ threadWarning: "" });
     loadThreads().catch(() => {});
     return true;
   } catch (e) {
     set({ items: state.items.filter((i) => !i.optimistic) });
-    report(e);
+    report(
+      /already has an active writer/i.test(e.message)
+        ? "另一端仍持有此对话的写入权，历史记录可正常查看。草稿已保留，写入权释放后可直接重试发送。"
+        : e,
+    );
     return false;
   } finally {
     set({ busy: false });

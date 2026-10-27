@@ -638,6 +638,7 @@ export function Conversation() {
         }}
       >
         <div className="message-column">
+          {s.threadWarning && <p role="status">{s.threadWarning}</p>}
           {s.historyCursor && (
             <button
               className="load-older"
