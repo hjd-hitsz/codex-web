@@ -45,6 +45,8 @@ GitHub Release 由 `.github/workflows/release.yml` 在推送版本标签后检�
 
 ## 验证和维护
 
+`README.md` 只面向第三方使用者，包含安装、配置、使用、升级与常见问题。开发环境、测试、项目结构、实现机制、打包和发布维护内容放入 `docs/development.md` 及对应的架构、版本专题文档；`docs/deployment.md` 面向使用者的部署与运行维护。要求 AI 遵循的项目维护规则写入 `AGENTS.md`。
+
 提交修改前执行 `npm run check`。涉及协议或生命周期的修改补充对应测试；测试使用模拟后端，不操作真实用户聊天。真实后端验证应使用临时会话或明确的测试数据。
 
 发布前使用实际标签设置 `GITHUB_REF_NAME` 执行完整检查，覆盖 GitHub Actions 的标签环境。版本测试在临时仓库中显式传入对应标签，避免继承当前发布标签。
