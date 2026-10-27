@@ -9,7 +9,7 @@ await mkdir(cache, { recursive: true });
 try {
   await build({
     stdin: {
-      contents: `export {Conversation, Composer} from './src/chat.jsx'; export {ReasoningEffortControl} from './src/reasoning-effort.jsx'; export {TerminalPanel} from './src/workspace.jsx'; export {VersionDetails} from './src/version.jsx'; export {ProjectGroup} from './src/project-group.jsx'; export * from './src/store.js';`,
+      contents: `export {Conversation, Composer, RichText} from './src/chat.jsx'; export {ReasoningEffortControl} from './src/reasoning-effort.jsx'; export {TerminalPanel} from './src/workspace.jsx'; export {VersionDetails} from './src/version.jsx'; export {ProjectGroup} from './src/project-group.jsx'; export * from './src/store.js';`,
       resolveDir: root + "client",
     },
     banner: {
@@ -32,6 +32,21 @@ try {
     external: ["react", "react-dom"],
     loader: { ".css": "empty" },
     plugins: [
+      {
+        name: "mermaid-fixture",
+        setup(builder) {
+          builder.onResolve({ filter: /^mermaid$/ }, () => ({
+            path: "mermaid",
+            namespace: "mermaid-fixture",
+          }));
+          builder.onLoad(
+            { filter: /.*/, namespace: "mermaid-fixture" },
+            () => ({
+              contents: `let config; export default {initialize(options){config=options}, render(id, source){return new Promise((resolve,reject)=>globalThis.testMermaidCalls.push({id,source,config,resolve,reject}))}}`,
+            }),
+          );
+        },
+      },
       {
         name: "terminal-fixture",
         setup(builder) {

@@ -29,6 +29,7 @@ test(
       "bin/codex-web.mjs",
       "client/dist/index.html",
       "client/dist/app.js",
+      "client/dist/mermaid.core.js",
       "client/dist/style.css",
       "build-info.json",
       "server/src/version.mjs",
@@ -36,6 +37,11 @@ test(
       ".env.example",
     ])
       assert.ok(paths.includes(path), `安装包缺少 ${path}`);
+    for (const prefix of ["flowDiagram-", "sequenceDiagram-"])
+      assert.ok(
+        paths.some((path) => path.startsWith("client/dist/" + prefix)),
+        `安装包缺少 Mermaid 图表模块：${prefix}`,
+      );
     assert.ok(
       paths.every((path) => !/(^|\/)(tests|node_modules|\.git)\//.test(path)),
     );
@@ -147,6 +153,19 @@ test(
     assert.equal(script.status, 200);
     assert.ok((await script.text()).includes(version.displayVersion));
     assert.equal((await fetch(url + "/style.css")).status, 200);
+    for (const path of paths.filter(
+      (path) =>
+        path === "client/dist/mermaid.core.js" ||
+        /^client\/dist\/(flowDiagram|sequenceDiagram)-.*\.js$/.test(path),
+    )) {
+      const resource = await fetch(url + path.slice("client/dist".length));
+      assert.equal(resource.status, 200, path);
+      assert.equal(
+        resource.headers.get("content-type"),
+        "text/javascript; charset=utf-8",
+      );
+      assert.ok((await resource.text()).length > 0);
+    }
 
     const fakeBin = join(dir, "fake-bin");
     await mkdir(fakeBin);

@@ -59,6 +59,7 @@ import { commandDescription } from "./command-description";
 import { UserInputForm } from "./user-input";
 import { ServiceTierToggle } from "./service-tier-toggle";
 import { ReasoningEffortControl } from "./reasoning-effort";
+import { MermaidBlock } from "./mermaid-block";
 
 function mathDelimiters(text) {
   return (text || "")
@@ -82,7 +83,10 @@ export function RichText({ text }) {
     <div className="markdown">
       <Markdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, rehypeHighlight]}
+        rehypePlugins={[
+          rehypeKatex,
+          [rehypeHighlight, { plainText: ["mermaid"] }],
+        ]}
         components={{
           a: ({ href, children }) => (
             <a
@@ -99,27 +103,25 @@ export function RichText({ text }) {
               {children}
             </a>
           ),
-          pre: ({ children }) => (
-            <div className="code-block">
-              <div className="code-heading">
-                <span>
-                  {children?.props?.className?.match(
-                    /language-([\w-]+)/,
-                  )?.[1] || "代码"}
-                </span>
-                <IconButton
-                  icon={Copy}
-                  title="复制代码"
-                  onClick={() => copy(extractText(children))}
-                />
-              </div>
-              <pre>{children}</pre>
-            </div>
-          ),
+          pre: CodeBlock,
         }}
       >
         {mathDelimiters(text)}
       </Markdown>
+    </div>
+  );
+}
+function CodeBlock({ children }) {
+  const language = children?.props?.className?.match(/language-([\w-]+)/)?.[1];
+  const source = extractText(children);
+  if (language === "mermaid") return <MermaidBlock source={source} />;
+  return (
+    <div className="code-block">
+      <div className="code-heading">
+        <span>{language || "代码"}</span>
+        <IconButton icon={Copy} title="复制代码" onClick={() => copy(source)} />
+      </div>
+      <pre>{children}</pre>
     </div>
   );
 }

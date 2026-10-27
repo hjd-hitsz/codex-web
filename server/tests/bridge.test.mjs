@@ -28,6 +28,11 @@ test(
     const files = await mkdtemp(join(tmpdir(), "codex-web-test-"));
     const version = readVersion();
     await writeFile(join(files, "index.html"), "<h1>Codex Web test</h1>");
+    await writeFile(
+      join(files, "mermaid.core.js"),
+      "export const diagram = 1;",
+    );
+    await writeFile(join(files, "diagram-theme.css"), "svg { color: black; }");
     const desktopStatePath = join(files, ".codex-global-state.json");
     const scratch = join(files, "documents", "2026-10-26", "scratch");
     await writeFile(
@@ -174,6 +179,38 @@ test(
     await writeFile(join(files, "index.html"), "<h1>Updated build</h1>");
     assert.equal(await (await fetch(url)).text(), "<h1>Updated build</h1>");
     assert.equal((await fetch(url + "/missing")).status, 404);
+    const diagramScript = await fetch(url + "/mermaid.core.js");
+    assert.equal(diagramScript.status, 200);
+    assert.equal(
+      diagramScript.headers.get("content-type"),
+      "text/javascript; charset=utf-8",
+    );
+    assert.equal(diagramScript.headers.get("cache-control"), "no-store");
+    assert.equal(await diagramScript.text(), "export const diagram = 1;");
+    await writeFile(
+      join(files, "mermaid.core.js"),
+      "export const diagram = 2;",
+    );
+    assert.equal(
+      await (await fetch(url + "/mermaid.core.js")).text(),
+      "export const diagram = 2;",
+    );
+    const diagramStyle = await fetch(url + "/diagram-theme.css");
+    assert.equal(diagramStyle.status, 200);
+    assert.equal(
+      diagramStyle.headers.get("content-type"),
+      "text/css; charset=utf-8",
+    );
+    assert.equal(await diagramStyle.text(), "svg { color: black; }");
+    await rm(join(files, "mermaid.core.js"));
+    for (const path of [
+      "/mermaid.core.js",
+      "/missing.js",
+      "/%2e%2e%2foutside.js",
+      "/nested/chunk.js",
+      "/.codex-global-state.json",
+    ])
+      assert.equal((await fetch(url + path)).status, 404, path);
 
     const question = {
       id: "pending-question",

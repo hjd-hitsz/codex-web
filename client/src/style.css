@@ -768,6 +768,39 @@ p {
   padding: 14px 16px;
   overflow: auto;
 }
+.mermaid-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mermaid-actions > button:not(.icon-button) {
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.mermaid-diagram {
+  padding: 16px;
+  overflow: auto;
+  background: var(--bg);
+  text-align: center;
+}
+.mermaid-diagram > svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.markdown .mermaid-status {
+  margin: 12px 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.mermaid-render-target {
+  position: fixed;
+  top: 0;
+  left: -100000px;
+  width: 100%;
+  pointer-events: none;
+}
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-literal {

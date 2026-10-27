@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import React, { act } from "react";
 import { create } from "react-test-renderer";
 import { setTimeout as delay } from "node:timers/promises";
+import { testMermaid } from "./mermaid.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -55,6 +56,7 @@ localStorage.setItem(
 const app = await import(
   pathToFileURL(process.env.CODEX_COMPONENT_BUNDLE).href
 );
+await testMermaid(app);
 {
   const models = [
     {

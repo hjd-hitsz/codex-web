@@ -96,6 +96,8 @@ curl http://127.0.0.1:8766/healthz
 
 前端更新执行 `npm run build` 即可，服务按文件修改时间重新读取资源。桥接服务修改需要重启 `codex-lan-web.service`。终端状态和输出缓存在桥接进程内，重启前应结束网页终端并等待任务空闲。
 
+首次加入 Mermaid 支持的升级同时修改了桥接的静态资源路由，需要在构建后执行 `npm run service:restart-when-idle`。新版桥接提供图表按需加载的 JavaScript 分块；后续仅修改前端时继续通过构建和刷新更新。
+
 更新后在网页“设置 → 关于”分别核对网页与桥接版本，或对比 `codex-web version --json` 与 `/healthz` 的 `version`。全局命令查看磁盘中的安装包，健康接口查看实际运行的桥接进程；源码桥接的提交状态在进程启动时固定，网页来源在构建时固定。只有前端需要更新时，重新构建后刷新网页即可。
 
 安装脚本保存被覆盖的网页服务文件。默认备份目录为 `~/.local/state/codex-web/service-backups/时间戳/`；设置 `XDG_STATE_HOME` 时采用对应目录。需要回退服务路径时，恢复该文件并执行 `systemctl --user daemon-reload`，然后重启网页服务。

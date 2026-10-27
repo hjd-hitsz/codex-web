@@ -239,7 +239,15 @@ const server = http.createServer(async (request, response) => {
     response.end(JSON.stringify({ ready, version }));
     return;
   }
-  const file = files.get(path);
+  const asset = path.match(/^\/([\w.-]+\.(js|css))$/);
+  const file =
+    files.get(path) ||
+    (asset && [
+      asset[1],
+      asset[2] === "js"
+        ? "text/javascript; charset=utf-8"
+        : "text/css; charset=utf-8",
+    ]);
   if (!file) {
     response.writeHead(404);
     response.end("Not found");
@@ -267,6 +275,12 @@ const server = http.createServer(async (request, response) => {
     });
     response.end(compressed ? content.gzip : content.raw);
   } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") {
+      staticCache.delete(path);
+      response.writeHead(404);
+      response.end("Not found");
+      return;
+    }
     console.error("Static file:", error.message);
     response.writeHead(500);
     response.end("Unable to load page");
