@@ -139,7 +139,7 @@ test("版本准备同步包与锁文件、汇总未发布内容并更新安装�
     await readFile(join(dir, "README.md"), "utf8"),
     /v1\.3\.0\/codex-web-1\.3\.0\.tgz/,
   );
-  assert.throws(() => prepareVersion(dir, "patch"), /未发布区域/);
+  assert.throws(() => prepareVersion(dir, "patch"), /已准备且尚未创建标签/);
   assert.throws(() => prepareVersion(dir, "1.2.4"), /大于当前版本/);
   assert.throws(() => prepareVersion(dir, "01.3.1"), /用法/);
   assert.throws(() => checkRelease(dir, "v1.2.3"), /发布标签必须匹配/);
@@ -198,4 +198,47 @@ test("版本准备支持 patch、major 和明确的正式版本", async (t) => {
     assert.equal(prepareVersion(dir, target), expected);
     assert.equal(checkVersions(dir), expected);
   }
+});
+
+test("同版本重试保持版本、发布说明和待发布变更原样", async (t) => {
+  const dir = await fixture(t);
+  initialize(dir);
+  prepareVersion(dir, "1.2.4", "2026-10-26");
+  const notesPath = join(dir, "docs/releases/v1.2.4.md");
+  await writeFile(
+    notesPath,
+    "# Codex Web v1.2.4\n\n- 已审阅的安装与升级说明。\n",
+  );
+  const changelogPath = join(dir, "CHANGELOG.md");
+  await writeFile(
+    changelogPath,
+    (await readFile(changelogPath, "utf8")).replace(
+      "## 未发布",
+      "## 未发布\n\n- 后续积累的变更。",
+    ),
+  );
+  const paths = [
+    "package.json",
+    "client/package.json",
+    "server/package.json",
+    "package-lock.json",
+    "CHANGELOG.md",
+    "docs/releases/v1.2.4.md",
+    "README.md",
+    "docs/deployment.md",
+  ];
+  const before = await Promise.all(
+    paths.map((path) => readFile(join(dir, path), "utf8")),
+  );
+  assert.equal(prepareVersion(dir, "1.2.4", "2026-10-27"), "1.2.4");
+  assert.deepEqual(
+    await Promise.all(paths.map((path) => readFile(join(dir, path), "utf8"))),
+    before,
+  );
+  assert.throws(() => prepareVersion(dir, "patch"), /继续完成该版本/);
+  commit(dir);
+  git(dir, "tag", "v1.2.4");
+  assert.equal(checkRelease(dir, "v1.2.4"), "1.2.4");
+  assert.equal(prepareVersion(dir, "1.2.4"), "1.2.4");
+  assert.equal(git(dir, "status", "--porcelain"), "");
 });

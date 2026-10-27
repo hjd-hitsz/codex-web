@@ -43,7 +43,7 @@ curl http://127.0.0.1:8766/healthz
 
 ## 发布 GitHub Release
 
-`.github/workflows/release.yml` 在推送 `v*` 标签时运行。流程执行 `npm run release:check`，核对根包、workspaces、锁文件、当前干净标签、变更日志、发布说明和安装链接，安装依赖并执行 `npm run check`，随后将带有构建来源的预构建 npm 包和 SHA-256 文件上传为正式 Release。发布说明读取 `docs/releases/标签名.md`。发布权限使用仓库工作流的 `GITHUB_TOKEN`，权限范围为 `contents: write`。
+`.github/workflows/release.yml` 在推送 `v*` 标签时运行。流程执行 `npm run release:check`，核对根包、workspaces、锁文件、当前干净标签、变更日志、发布说明和安装链接，安装依赖并执行 `npm run check`。`scripts/publish-release.mjs` 将带有构建来源的预构建 npm 包和 SHA-256 文件完整上传到同版本草稿，再转为正式 Release。发布说明读取 `docs/releases/标签名.md`。发布权限使用仓库工作流的 `GITHUB_TOKEN`，权限范围为 `contents: write`。
 
 日常提交保持当前包版本，有实际影响的变更先记入 `CHANGELOG.md` 的“未发布”。发布时依据整个批次选择版本，执行 `npm run version:prepare -- patch`（或 `minor`、`major`、明确版本），审阅生成的发布说明，补充安装、升级或迁移信息。将 `GITHUB_REF_NAME` 设为本次标签，执行 `npm run check` 并提交。随后用实际版本替换下面的 `X.Y.Z`：
 
@@ -54,6 +54,8 @@ git push origin main vX.Y.Z
 ```
 
 版本规则和完整工作流见 [版本管理](versioning.md)。标签对应的 Release 版本保持固定，后续改动积累到下一个版本。发布后检查 Actions 结果、Release 附件以及 README 安装地址，并下载附件验证校验和与全局安装。
+
+发布任一步骤失败时，保留用户确定的版本，修复失败原因并重试原版本。网络或上传中断可直接重跑工作流：草稿复用并补齐两个附件，已正式发布的附件保持固定。代码修复涉及失败标签时，先核实该版本尚未正式交付，再按[同版本重试规则](versioning.md#发布失败与同版本重试)更新原标签并重新检查。
 
 ## 配置
 

@@ -32,13 +32,4 @@ jobs:
       - name: Package and publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          npm pack --ignore-scripts
-          package_file="codex-web-${GITHUB_REF_NAME#v}.tgz"
-          sha256sum "$package_file" > "$package_file.sha256"
-          gh release create "$GITHUB_REF_NAME" "$package_file" "$package_file.sha256" \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --title "Codex Web $GITHUB_REF_NAME" \
-            --notes-file "docs/releases/$GITHUB_REF_NAME.md" \
-            --latest
+        run: node scripts/publish-release.mjs

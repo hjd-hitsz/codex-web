@@ -32,7 +32,7 @@
     "start": "node --env-file-if-exists=.env server/src/server.mjs",
     "start:backend": "node --env-file-if-exists=.env scripts/start-backend.mjs",
     "test": "npm run test:unit && npm run test:components",
-    "test:unit": "node --test client/tests/*.test.js server/tests/*.test.mjs tests/version.test.mjs",
+    "test:unit": "node --test client/tests/*.test.js server/tests/*.test.mjs tests/version.test.mjs tests/release.test.mjs",
     "test:components": "node scripts/test-components.mjs",
     "test:package": "npm run build && node --test tests/package.test.mjs",
     "version:check": "node scripts/version.mjs check",

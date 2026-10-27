@@ -62,6 +62,14 @@ export function prepareVersion(
     stableVersion,
     "用法：npm run version:prepare -- patch|minor|major|X.Y.Z",
   );
+  if (target === previous) {
+    assert.ok(
+      existsSync(join(dir, `docs/releases/v${target}.md`)) &&
+        read(dir, "CHANGELOG.md").includes(`## [${target}] - `),
+      `当前版本 ${target} 缺少发布准备记录`,
+    );
+    return target;
+  }
   const next = target.split(".").map(Number);
   const current = previous.split(".").map(Number);
   const difference = next.findIndex((value, i) => value !== current[i]);
@@ -69,6 +77,16 @@ export function prepareVersion(
     difference >= 0 && next[difference] > current[difference],
     "新版本必须大于当前版本",
   );
+  if (existsSync(join(dir, ".git"))) {
+    const currentTag = execFileSync("git", ["tag", "--list", `v${previous}`], {
+      cwd: dir,
+      encoding: "utf8",
+    }).trim();
+    assert.ok(
+      currentTag || !existsSync(join(dir, `docs/releases/v${previous}.md`)),
+      `v${previous} 已准备且尚未创建标签，请继续完成该版本；重试使用明确版本 ${previous}`,
+    );
+  }
   const tag = `v${target}`;
   assert.ok(
     !existsSync(join(dir, `docs/releases/${tag}.md`)),
