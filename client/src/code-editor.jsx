@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import {
   EditorView,
   lineNumbers,
@@ -10,10 +10,14 @@ import {
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting } from "@codemirror/language";
 import { fileLanguage, codeHighlightStyle } from "./editor-language";
+import { fileChangeMarks } from "./file-change-marks";
+import { fileChangeHighlights } from "./file-changes";
 
-export function CodeEditor({ path, text, onChange }) {
+export function CodeEditor({ path, text, onChange, diff = "", patches }) {
   const parent = useRef(),
-    handler = useRef(onChange);
+    handler = useRef(onChange),
+    view = useRef(),
+    marks = useRef(new Compartment());
   handler.current = onChange;
   useEffect(() => {
     const editor = new EditorView({
@@ -22,6 +26,7 @@ export function CodeEditor({ path, text, onChange }) {
         doc: text,
         extensions: [
           lineNumbers(),
+          marks.current.of([]),
           history(),
           drawSelection(),
           highlightActiveLine(),
@@ -52,7 +57,42 @@ export function CodeEditor({ path, text, onChange }) {
         ],
       }),
     });
-    return () => editor.destroy();
+    view.current = editor;
+    return () => {
+      editor.destroy();
+      view.current = null;
+    };
   }, [path]);
+  useEffect(() => {
+    const editor = view.current;
+    if (editor.state.doc.toString() !== text)
+      editor.dispatch({
+        changes: { from: 0, to: editor.state.doc.length, insert: text },
+        effects: marks.current.reconfigure(
+          diff ? fileChangeMarks(diff, patches) : [],
+        ),
+        annotations: Transaction.addToHistory.of(false),
+      });
+  }, [text]);
+  useEffect(() => {
+    const editor = view.current;
+    editor.dispatch({
+      effects: marks.current.reconfigure(
+        diff ? fileChangeMarks(diff, patches) : [],
+      ),
+    });
+    const first = fileChangeHighlights(
+      editor.state.doc.toString(),
+      diff,
+      patches,
+    ).firstLine;
+    if (first !== null)
+      editor.dispatch({
+        effects: EditorView.scrollIntoView(
+          editor.state.doc.line(Math.min(first, editor.state.doc.lines)).from,
+          { y: "center" },
+        ),
+      });
+  }, [path, diff, patches]);
   return <div className="code-editor" ref={parent} />;
 }

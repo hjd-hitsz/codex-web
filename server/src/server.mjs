@@ -6,6 +6,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import { readConfig } from "./config.mjs";
 import { readVersion } from "./version.mjs";
 import { createThreadNaming, generateThreadName } from "./thread-names.mjs";
+import { changesForPath, undoFileChanges } from "./file-undo.mjs";
 import {
   prepareProjectlessDirectory,
   readProjectlessDirectories,
@@ -33,6 +34,8 @@ const releasing = new Map();
 const resuming = new Map();
 const activeThreads = new Set();
 const unwrittenThreads = new Set();
+const undoing = new Set();
+const undoneFiles = new Map();
 const threadMethods = new Set(["thread/start", "thread/resume", "thread/fork"]);
 const loadedThreadMethods = new Set([
   "turn/start",
@@ -131,6 +134,7 @@ function state() {
       questions: [...questions.values()],
       activeTurns: Object.fromEntries(activeTurns),
       terminals: Object.fromEntries(terminals),
+      undoneFiles: [...undoneFiles.values()],
     },
   };
 }
@@ -435,6 +439,50 @@ clients.on("connection", (client) => {
         }
         return;
       }
+      if (message.method === "lan/files/undo") {
+        try {
+          const { turnId, path } = message.params;
+          const key = JSON.stringify([threadId, turnId, path]);
+          if (undoneFiles.has(key)) {
+            const result = undoneFiles.get(key);
+            broadcast({ method: "lan/files/undone", params: result });
+            send(client, { id: message.id, result });
+            return;
+          }
+          if (activeTurns.has(threadId) || activeThreads.has(threadId))
+            throw new Error("任务正在运行，请在结束后撤销修改。");
+          if (undoing.has(threadId))
+            throw new Error("正在撤销文件修改，请稍候。");
+          undoing.add(threadId);
+          try {
+            const { thread } = await callUpstream("thread/read", {
+              threadId,
+              includeTurns: true,
+            });
+            const turn = thread.turns.find((turn) => turn.id === turnId);
+            if (!turn || turn.status === "inProgress")
+              throw new Error("请重新加载此轮记录后再撤销。");
+            await undoFileChanges({
+              cwd: thread.cwd,
+              changes: changesForPath(turn.items, thread.cwd, path),
+              isActive: () =>
+                activeTurns.has(threadId) || activeThreads.has(threadId),
+            });
+            const result = { threadId, turnId, path };
+            undoneFiles.set(key, result);
+            broadcast({ method: "lan/files/undone", params: result });
+            send(client, { id: message.id, result });
+          } finally {
+            undoing.delete(threadId);
+          }
+        } catch (error) {
+          send(client, {
+            id: message.id,
+            error: { code: -32000, message: error.message },
+          });
+        }
+        return;
+      }
       if (message.method === "thread/unsubscribe") {
         subscriptions.get(threadId)?.delete(client);
         releaseUnusedThreads();
@@ -442,6 +490,16 @@ clients.on("connection", (client) => {
         send(client, {
           id: message.id,
           result: result || { status: "unsubscribed" },
+        });
+        return;
+      }
+      if (undoing.has(threadId) && loadedThreadMethods.has(message.method)) {
+        send(client, {
+          id: message.id,
+          error: {
+            code: -32000,
+            message: "正在撤销文件修改，完成后可继续发送。",
+          },
         });
         return;
       }

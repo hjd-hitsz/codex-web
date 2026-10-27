@@ -69,6 +69,8 @@ let state = {
   usage: null,
   tokenUsage: {},
   diffs: {},
+  turnDiffs: {},
+  undoneFiles: saved("cx-undone-files", {}),
   plans: {},
   busy: false,
   loading: false,
@@ -209,7 +211,13 @@ function connect() {
     const m = JSON.parse(e.data);
     if (m.method === "lan/state") {
       const was = state.connected;
+      const undoneFiles = { ...state.undoneFiles };
+      for (const file of m.params.undoneFiles || [])
+        undoneFiles[JSON.stringify([file.threadId, file.turnId, file.path])] =
+          true;
+      persist("cx-undone-files", undoneFiles);
       set({
+        undoneFiles,
         ...(!state.cwd && m.params.defaultCwd
           ? { cwd: m.params.defaultCwd }
           : {}),
@@ -652,7 +660,21 @@ function handle({ method, params: p = {} }) {
   if (method === "thread/tokenUsage/updated")
     set({ tokenUsage: { ...state.tokenUsage, [p.threadId]: p.tokenUsage } });
   if (method === "turn/diff/updated")
-    set({ diffs: { ...state.diffs, [p.threadId]: p.diff } });
+    set({
+      diffs: { ...state.diffs, [p.threadId]: p.diff },
+      turnDiffs: {
+        ...state.turnDiffs,
+        [p.threadId]: { ...state.turnDiffs[p.threadId], [p.turnId]: p.diff },
+      },
+    });
+  if (method === "lan/files/undone") {
+    const undoneFiles = {
+      ...state.undoneFiles,
+      [JSON.stringify([p.threadId, p.turnId, p.path])]: true,
+    };
+    persist("cx-undone-files", undoneFiles);
+    set({ undoneFiles });
+  }
   if (method === "turn/plan/updated")
     set({ plans: { ...state.plans, [p.threadId]: p } });
   if (p.threadId !== state.current?.id) return;
@@ -863,16 +885,30 @@ function forgetThread(id) {
   const pins = state.pins.filter((value) => value !== id);
   persist("cx-pins", pins);
   localStorage.removeItem("cx-draft-" + id);
+  const undoneFiles = Object.fromEntries(
+    Object.entries(state.undoneFiles).filter(
+      ([key]) => JSON.parse(key)[0] !== id,
+    ),
+  );
+  persist("cx-undone-files", undoneFiles);
   if (localStorage.getItem("cx-current") === id)
     localStorage.removeItem("cx-current");
   if (state.current?.id === id) newChat();
   const patch = {};
-  for (const key of ["active", "turns", "diffs", "plans", "tokenUsage"]) {
+  for (const key of [
+    "active",
+    "turns",
+    "diffs",
+    "turnDiffs",
+    "plans",
+    "tokenUsage",
+  ]) {
     patch[key] = { ...state[key] };
     delete patch[key][id];
   }
   set({
     ...patch,
+    undoneFiles,
     pins,
     threads: state.threads.filter((thread) => thread.id !== id),
     questions: state.questions.filter(

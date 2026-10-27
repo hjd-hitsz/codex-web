@@ -40,7 +40,7 @@ try {
             namespace: "editor-fixture",
           }));
           builder.onLoad({ filter: /.*/, namespace: "editor-fixture" }, () => ({
-            contents: `import React from 'react'; export function CodeEditor({path,text,onChange}) {return React.createElement('textarea', {'aria-label': '文件源码', value: text, onChange: e => onChange(e.target.value)})}`,
+            contents: `import React from 'react'; export function CodeEditor({path,text,onChange,diff,patches}) {return React.createElement('textarea', {'aria-label': '文件源码', 'data-change-diff': diff, 'data-change-patches': patches, value: text, onChange: e => onChange(e.target.value)})}`,
           }));
         },
       },

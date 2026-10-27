@@ -59,6 +59,7 @@ import { MessageImage } from "./message-image";
 import { RichText } from "./rich-text";
 import { annotationContexts } from "./annotations";
 import { AnnotatedUserText, MessageAnnotations } from "./message-annotations";
+import { TurnFileChanges } from "./turn-file-changes";
 export { RichText } from "./rich-text";
 function Content({ content }) {
   return (
@@ -250,7 +251,7 @@ function ReasoningPart({ title, body }) {
     </>
   );
 }
-function Message({ item, showActions, annotations }) {
+function Message({ item, annotations }) {
   if (item.type === "reasoning") return <Reasoning item={item} />;
   if (item.type === "agentMessage" && item.questions?.length)
     return (
@@ -312,23 +313,25 @@ function Message({ item, showActions, annotations }) {
         <MessageAnnotations item={item}>
           <RichText text={item.text} annotations={annotations} />
         </MessageAnnotations>
-        {showActions && (
-          <div className="message-actions">
-            <IconButton
-              icon={Copy}
-              title="复制回复"
-              onClick={() => copy(item.text)}
-            />
-            <IconButton
-              icon={GitBranch}
-              title="从这里创建分支"
-              onClick={() => fork(get().current, item.turnId).catch(report)}
-            />
-          </div>
-        )}
       </article>
     );
   return <Activity item={item} />;
+}
+function ReplyActions({ item }) {
+  return (
+    <div className="message-actions reply-actions" aria-label="回复操作">
+      <IconButton
+        icon={Copy}
+        title="复制回复"
+        onClick={() => copy(item.text)}
+      />
+      <IconButton
+        icon={GitBranch}
+        title="从这里创建分支"
+        onClick={() => fork(get().current, item.turnId).catch(report)}
+      />
+    </div>
+  );
 }
 function AsyncQuestion({ item }) {
   const s = useStore();
@@ -497,7 +500,6 @@ function ProcessGroup({ group, working, annotations }) {
               <Message
                 key={item.id}
                 item={item}
-                showActions={false}
                 annotations={annotations.get(item.id)}
               />
             ))}
@@ -512,7 +514,6 @@ function ProcessGroup({ group, working, annotations }) {
             <Message
               key={latest.id}
               item={latest}
-              showActions={false}
               annotations={annotations.get(latest.id)}
             />
           )}
@@ -535,12 +536,23 @@ export function Conversation() {
     s.turns[s.current?.id] || [],
     active,
   );
+  const groups = conversationGroups(s.items);
+  const replies = new Map(
+    s.items
+      .filter((item) => actions.has(item.id))
+      .map((item) => [item.turnId, item]),
+  );
+  const lastGroups = new Map();
+  for (const group of groups) {
+    const turnId = group.turnId || group.item?.turnId;
+    if (turnId) lastGroups.set(turnId, group.id);
+  }
   useEffect(() => {
     follow.current = true;
   }, [s.current?.id]);
   useEffect(() => {
     if (follow.current) bottom.current?.scrollIntoView({ block: "end" });
-  }, [s.items, s.questions, plan]);
+  }, [s.items, s.questions, plan, active, s.turnDiffs]);
   if (!s.current && !s.loading)
     return (
       <div className="welcome">
@@ -608,23 +620,38 @@ export function Conversation() {
               正在打开对话…
             </div>
           ) : (
-            conversationGroups(s.items).map((group) =>
-              group.type === "process" ? (
-                <ProcessGroup
-                  key={`${s.current?.id}:${group.id}`}
-                  group={group}
-                  annotations={annotations}
-                  working={!!active && active === group.turnId}
-                />
-              ) : (
-                <Message
-                  key={`${s.current?.id}:${group.id}`}
-                  item={group.item}
-                  annotations={annotations.get(group.item.id)}
-                  showActions={actions.has(group.id)}
-                />
-              ),
-            )
+            groups.map((group) => {
+              const turnId = group.turnId || group.item?.turnId;
+              return (
+                <React.Fragment key={`${s.current?.id}:${group.id}`}>
+                  {group.type === "process" ? (
+                    <ProcessGroup
+                      key={`${s.current?.id}:${group.id}`}
+                      group={group}
+                      annotations={annotations}
+                      working={!!active && active === group.turnId}
+                    />
+                  ) : (
+                    <Message
+                      key={`${s.current?.id}:${group.id}`}
+                      item={group.item}
+                      annotations={annotations.get(group.item.id)}
+                    />
+                  )}
+                  {turnId && lastGroups.get(turnId) === group.id && (
+                    <>
+                      <TurnFileChanges
+                        turnId={turnId}
+                        items={s.items.filter((item) => item.turnId === turnId)}
+                      />
+                      {replies.has(turnId) && (
+                        <ReplyActions item={replies.get(turnId)} />
+                      )}
+                    </>
+                  )}
+                </React.Fragment>
+              );
+            })
           )}
           {plan?.plan?.length > 0 && (
             <details className="plan-card" open={!!active}>

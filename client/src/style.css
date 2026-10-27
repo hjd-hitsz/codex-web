@@ -765,6 +765,13 @@ p {
 .message:last-of-type .message-actions {
   opacity: 1;
 }
+.reply-actions {
+  opacity: 1;
+  margin: 0 0 16px;
+}
+.turn-file-changes:has(+ .reply-actions) {
+  margin-bottom: 6px;
+}
 .message-actions .icon-button {
   width: 26px;
   height: 26px;
@@ -1836,6 +1843,26 @@ select option {
   min-height: 0;
   overflow: hidden;
 }
+.code-editor .cm-line.cm-file-change-added {
+  background: color-mix(in srgb, var(--green) 16%, var(--bg));
+  box-shadow: inset 2px 0 var(--green);
+}
+.code-editor .cm-file-change-removed {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 14%, var(--bg));
+  border-left: 2px solid var(--red);
+  font: inherit;
+  white-space: pre;
+}
+.cm-file-change-removed > div {
+  display: flex;
+}
+.cm-file-change-old-line {
+  min-width: 4ch;
+  padding: 0 8px 0 4px;
+  opacity: 0.7;
+  user-select: none;
+}
 .file-markdown-preview {
   flex: 1;
   min-height: 0;
@@ -1929,13 +1956,16 @@ select option {
 }
 .diff-number {
   display: inline-block;
-  width: 36px;
+  width: calc(var(--diff-number-width, 3ch) + 12px);
   text-align: right;
   padding-right: 10px;
   color: var(--muted);
   user-select: none;
   flex: none;
   opacity: 0.6;
+}
+.diff-old-number {
+  border-right: 1px solid var(--border);
 }
 .diff-block code {
   font: inherit;
@@ -1955,9 +1985,129 @@ select option {
   font-weight: 600;
   padding: 5px 0;
 }
-.diff-hunk {
-  color: #688db2;
-  background: #688db210;
+.turn-file-changes {
+  margin: 12px 0 20px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.file-changes-heading {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 9px 11px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.file-changes-heading small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.file-changes-heading > svg:last-child {
+  margin-left: auto;
+  color: var(--muted);
+}
+.file-changes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+.file-change-item {
+  min-width: 0;
+}
+.file-change-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 3px 8px 3px 11px;
+}
+.file-change-row:hover {
+  background: var(--subtle);
+}
+.file-change-name {
+  min-width: 0;
+  justify-content: flex-start;
+  padding: 3px 0;
+  font-size: 12px;
+  text-align: left;
+}
+.file-change-name svg {
+  flex: none;
+  color: var(--muted);
+}
+.file-change-name span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-change-stats {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.file-change-added {
+  color: var(--green);
+}
+.file-change-removed,
+.file-change-error {
+  color: var(--red);
+}
+.file-change-undone {
+  color: var(--muted);
+  font-size: 10px;
+}
+.file-change-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.file-change-actions button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.file-changes-more {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 8px 11px;
+  color: var(--muted);
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+}
+.file-changes-less {
+  transform: rotate(180deg);
+}
+.file-change-error {
+  padding: 2px 11px 8px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.file-diff-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+.file-diff-path {
+  padding: 8px 11px;
+  color: var(--muted);
+  font: 11px/1.6 var(--mono);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .file-change-row {
+    gap: 6px;
+    padding-inline: 8px;
+  }
 }
 .panel-bottom {
   display: flex;

@@ -10,6 +10,7 @@ import { testThreadArchive } from "./thread-archive.mjs";
 import { testThreadNames } from "./thread-names.mjs";
 import { testAnnotations } from "./annotations.mjs";
 import { testFilePanel } from "./file-panel.mjs";
+import { testFileChanges } from "./file-changes.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -89,6 +90,12 @@ await testMermaid(app);
     );
     await testAnnotations(app, requests, (respond) => (responseFor = respond));
     await testFilePanel(app, requests, (respond) => (responseFor = respond));
+    await testFileChanges(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
   } finally {
     responseFor = previousResponse;
   }
@@ -927,7 +934,13 @@ console.log(
     view.root
       .findByProps({ className: "message-column" })
       .children.filter((node) => node.props?.group || node.props?.item)
-      .map((node) => (node.props.group ? "process" : node.props.item.id));
+      .map((node) =>
+        node.props.group
+          ? "process"
+          : node.findAllByProps({ "aria-label": "回复操作" }).length
+            ? "actions"
+            : node.props.item.id,
+      );
   const emitItem = (item) =>
     act(async () =>
       socket.emit("item/completed", {
@@ -1010,6 +1023,7 @@ console.log(
     "last-steer",
     "process",
     "guided-answer",
+    "actions",
   ];
   assert.deepEqual(order(), expectedOrder);
   assert.equal(

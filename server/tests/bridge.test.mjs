@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile, stat, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,6 +63,43 @@ test(
         if (request.method === "initialize")
           clientVersion = request.params.clientInfo.version;
         backendMethods.push(request.method);
+        if (
+          request.method === "thread/read" &&
+          request.params.threadId === "undo-fixture"
+        ) {
+          socket.send(
+            JSON.stringify({
+              id: request.id,
+              result: {
+                thread: {
+                  id: "undo-fixture",
+                  name: "撤销测试",
+                  cwd: files,
+                  turns: [
+                    {
+                      id: "undo-turn",
+                      status: "completed",
+                      items: [
+                        {
+                          type: "fileChange",
+                          status: "completed",
+                          changes: [
+                            {
+                              path: "edited.txt",
+                              kind: { type: "update" },
+                              diff: "--- a/edited.txt\n+++ b/edited.txt\n@@ -1 +1 @@\n-before\n+after\n",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            }),
+          );
+          return;
+        }
         if (request.id !== undefined)
           socket.send(
             JSON.stringify({
@@ -126,6 +163,79 @@ test(
       return socket;
     }
     const [first, second] = await Promise.all([connect(), connect()]);
+    await writeFile(join(files, "edited.txt"), "after\n");
+    let undoSequence = 0;
+    async function undo(path = join(files, "edited.txt")) {
+      const id = "undo-" + undoSequence++;
+      const response = messageFrom(first, (m) => m.id === id);
+      first.send(
+        JSON.stringify({
+          id,
+          method: "lan/files/undo",
+          params: {
+            threadId: "undo-fixture",
+            turnId: "undo-turn",
+            path,
+            changes: [{ path: "index.html", diff: "forged" }],
+          },
+        }),
+      );
+      return response;
+    }
+    assert.match(
+      (await undo(join(files, "index.html"))).error.message,
+      /没有可撤销/,
+    );
+    assert.equal(
+      await readFile(join(files, "index.html"), "utf8"),
+      "<h1>Codex Web test</h1>",
+    );
+    const started = messageFrom(first, (m) => m.method === "turn/started");
+    backend.send(
+      JSON.stringify({
+        method: "turn/started",
+        params: {
+          threadId: "undo-fixture",
+          turn: { id: "running", status: "inProgress" },
+        },
+      }),
+    );
+    await started;
+    assert.match((await undo()).error.message, /任务正在运行/);
+    const completed = messageFrom(first, (m) => m.method === "turn/completed");
+    backend.send(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          threadId: "undo-fixture",
+          turn: { id: "running", status: "completed" },
+        },
+      }),
+    );
+    await completed;
+    const undone = [first, second].map((socket) =>
+      messageFrom(socket, (m) => m.method === "lan/files/undone"),
+    );
+    assert.equal((await undo()).result.path, join(files, "edited.txt"));
+    for (const message of await Promise.all(undone))
+      assert.deepEqual(message.params, {
+        threadId: "undo-fixture",
+        turnId: "undo-turn",
+        path: join(files, "edited.txt"),
+      });
+    assert.equal(await readFile(join(files, "edited.txt"), "utf8"), "before\n");
+    assert.equal((await undo()).result.path, join(files, "edited.txt"));
+    assert.equal(await readFile(join(files, "edited.txt"), "utf8"), "before\n");
+    await connect((state) =>
+      assert.deepEqual(state.undoneFiles, [
+        {
+          threadId: "undo-fixture",
+          turnId: "undo-turn",
+          path: join(files, "edited.txt"),
+        },
+      ]),
+    );
+    assert.ok(!backendMethods.includes("lan/files/undo"));
     function echo(socket, label) {
       return new Promise((resolve) => {
         socket.on("message", (bytes) => {

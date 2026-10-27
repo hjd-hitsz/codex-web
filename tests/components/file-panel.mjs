@@ -7,6 +7,7 @@ export async function testFilePanel(app, requests, setResponse) {
   const previousWindow = globalThis.window;
   const listeners = new Map();
   let discard = false;
+  let finishRead;
   globalThis.window = {
     addEventListener: (name, handler) => listeners.set(name, handler),
     removeEventListener: (name) => listeners.delete(name),
@@ -44,6 +45,10 @@ export async function testFilePanel(app, requests, setResponse) {
   ]);
   setResponse(({ method, params }) => {
     if (method === "fs/readDirectory") return { entries: [] };
+    if (method === "fs/readFile" && params.path.endsWith("/slow.mjs"))
+      return new Promise((resolve) => {
+        finishRead = resolve;
+      });
     if (method === "fs/readFile")
       return {
         dataBase64: app.b64encode(files.get(params.path) || "图片数据"),
@@ -144,8 +149,183 @@ export async function testFilePanel(app, requests, setResponse) {
       view.root.findAllByProps({ "aria-label": "预览 Markdown" }).length,
       0,
     );
+    const source = "export const message = '未保存';";
+    await act(async () =>
+      button("文件源码").props.onChange({ target: { value: source } }),
+    );
+    const deletedPath = "/file-fixture/deleted.txt";
+    const change = {
+      path: deletedPath,
+      oldPath: deletedPath,
+      diff: "--- a/deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-deleted content\n",
+    };
+    const reads = requests.filter(
+      (request) => request.method === "fs/readFile",
+    ).length;
+    discard = false;
+    await open(change);
+    assert.equal(
+      requests.filter((request) => request.method === "fs/readFile").length,
+      reads,
+    );
+    assert.equal(
+      view.root
+        .findByProps({ "aria-label": "文件变更" })
+        .findAllByProps({ className: "diff-block" }).length,
+      1,
+    );
+    assert.equal(view.root.findAllByType("textarea").length, 0);
+    assert(JSON.stringify(view.toJSON()).includes("-deleted content"));
+    assert(
+      !view.root
+        .findAllByType("code")
+        .some((node) => node.props.children.startsWith("@@ -")),
+    );
+    await open({
+      path: "/file-fixture/sample.mjs",
+      diff: "--- a/sample.mjs\n+++ b/sample.mjs\n@@ -100,2 +100,2 @@ function draw()\n-old\n+new\n shared\n@@ -200 +200 @@\n-older\n+@@ literal in code\n",
+    });
+    const displayed = view.root
+      .findAllByType("code")
+      .map((node) => node.props.children);
+    assert(!displayed.some((line) => line.startsWith("@@ -")));
+    assert(displayed.includes("+new"));
+    assert(displayed.includes("-old"));
+    assert(displayed.includes("+@@ literal in code"));
+    const diffView = view.root.findByProps({ "aria-label": "文件变更" });
+    const numbers = (className) =>
+      diffView.findAllByProps({ className }).map((node) => node.props.children);
+    assert.deepEqual(numbers("diff-number diff-old-number"), [
+      "",
+      "",
+      100,
+      "",
+      101,
+      200,
+      "",
+    ]);
+    assert.deepEqual(numbers("diff-number diff-new-number"), [
+      "",
+      "",
+      "",
+      100,
+      101,
+      "",
+      200,
+    ]);
+    await open(change);
+    await act(async () => button("查看完整文件变更").props.onClick());
+    assert.equal(
+      view.root.findAllByProps({ "aria-label": "文件变更" }).length,
+      1,
+    );
+    assert.equal(
+      requests.filter((request) => request.method === "fs/readFile").length,
+      reads,
+    );
+    await act(async () =>
+      view.root
+        .findAllByType("button")
+        .find((node) => node.props.children?.includes?.("返回文件"))
+        .props.onClick(),
+    );
+    assert.equal(button("文件源码").props.value, source);
+    await open({ ...change, path: "/file-fixture/src/main.mjs" });
+    await act(async () => button("查看完整文件变更").props.onClick());
+    assert.equal(button("文件源码").props.value, source);
+    discard = true;
+    await open("/file-fixture/slow.mjs");
+    await open(change);
+    await act(async () =>
+      finishRead({ dataBase64: app.b64encode("late source") }),
+    );
+    assert(JSON.stringify(view.toJSON()).includes("-deleted content"));
+    await open({ ...change, path: "/file-fixture/slow.mjs" });
+    await act(async () => {
+      button("查看完整文件变更").props.onClick();
+    });
+    await act(async () =>
+      view.root
+        .findAllByType("button")
+        .find((node) => node.props.children?.includes?.("返回文件"))
+        .props.onClick(),
+    );
+    await act(async () =>
+      finishRead({ dataBase64: app.b64encode("cancelled source") }),
+    );
+    assert.equal(button("文件源码").props.value, source);
+    await open({ ...change, path: "/file-fixture/notes.markdown" });
+    await act(async () => button("查看完整文件变更").props.onClick());
+    assert.equal(
+      view.root.findAllByProps({ "aria-label": "文件变更" }).length,
+      0,
+    );
+    assert.equal(button("文件源码").props.value, "# 另一份文档");
+    assert(JSON.stringify(view.toJSON()).includes("当前内容与本轮记录不同"));
+    files.set("/file-fixture/notes.markdown", "# 磁盘中的最新内容");
+    await open({ ...change, path: "/file-fixture/notes.markdown" });
+    await act(async () => button("查看完整文件变更").props.onClick());
+    assert.equal(button("文件源码").props.value, "# 磁盘中的最新内容");
+    await open("/file-fixture/notes.markdown");
+    assert.equal(view.root.findByType("h1").props.children, "磁盘中的最新内容");
+    const fullPath = "/file-fixture/full.mjs";
+    const fullText = "unchanged before\nnew content\nunchanged after\n";
+    const patch =
+      "--- a/full.mjs\n+++ b/full.mjs\n@@ -2 +2 @@\n-old content\n+new content\n";
+    const patches = [
+      patch.replace("+new content", "+intermediate"),
+      patch.replace("-old content", "-intermediate"),
+    ];
+    const fullDiff = patches.join("\n");
+    files.set(fullPath, fullText);
+    const request = { path: fullPath, diff: fullDiff, patches };
+    await open(request);
+    assert.equal(view.root.findAllByType("textarea").length, 0);
+    assert(!JSON.stringify(view.toJSON()).includes("unchanged before"));
+    await open({ ...request, view: "full" });
+    assert.equal(
+      view.root.findAllByProps({ "aria-label": "文件变更" }).length,
+      0,
+    );
+    assert.equal(button("文件源码").props.value, fullText);
+    assert.equal(button("文件源码").props["data-change-diff"], fullDiff);
+    assert.deepEqual(button("文件源码").props["data-change-patches"], patches);
+    assert(!JSON.stringify(view.toJSON()).includes("当前内容与本轮记录不同"));
+    const draft = fullText + "unsaved\n";
+    await act(async () =>
+      button("文件源码").props.onChange({ target: { value: draft } }),
+    );
+    await act(async () => button("打开源文件").props.onClick());
+    assert.equal(button("文件源码").props.value, draft);
+    assert.equal(button("文件源码").props["data-change-diff"], "");
+    assert.equal(button("文件源码").props["data-change-patches"], undefined);
+    await open({ ...request, view: "full" });
+    assert.equal(button("文件源码").props.value, draft);
+    assert.equal(button("文件源码").props["data-change-diff"], fullDiff);
+    await act(async () => button("查看本轮差异片段").props.onClick());
+    await act(async () => button("打开源文件").props.onClick());
+    assert.equal(button("文件源码").props.value, draft);
+    assert.equal(button("文件源码").props["data-change-diff"], "");
+    await open(request);
+    await act(async () => button("查看完整文件变更").props.onClick());
+    assert.equal(button("文件源码").props.value, draft);
+    await act(async () => button("保存文件").props.onClick());
+    assert.equal(files.get(fullPath), draft);
+    assert(!files.get(fullPath).includes("old content"));
+    const markdownChange = {
+      path: documentPath,
+      diff: "--- a/docs/README.MD\n+++ b/docs/README.MD\n@@ -1 +1 @@\n-old heading\n+# 修改后的文档\n",
+      view: "full",
+    };
+    await open(markdownChange);
+    assert.equal(view.root.findAllByType("h1").length, 0);
+    assert.equal(button("文件源码").props.value, edited);
+    assert.equal(
+      button("文件源码").props["data-change-diff"],
+      markdownChange.diff,
+    );
     console.log(
-      "PASS Markdown 文件排版、代码与公式、相对图片与链接、源码切换、草稿保留、保存和放弃修改，以及代码文件编辑入口",
+      "PASS 文件侧栏区分差异片段、全文变更与普通源文件，保留草稿、正文保存及迟到读取隔离，以及 Markdown 预览与源码编辑",
     );
   } finally {
     await act(async () => view?.unmount());

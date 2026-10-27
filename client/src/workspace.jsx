@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Folder,
   FolderOpen,
@@ -20,9 +20,12 @@ import {
   Search,
   Eye,
   Code,
+  FileDiff,
+  ArrowUpRight,
 } from "lucide-react";
 import { CodeEditor } from "./code-editor";
 import { isMarkdownFile } from "./editor-language";
+import { diffRows, fileChangeHighlights } from "./file-changes";
 import { RichText } from "./rich-text";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -222,8 +225,18 @@ export function FilePanel() {
     [loading, setLoading] = useState(false),
     [filter, setFilter] = useState(""),
     [image, setImage] = useState(null),
-    [preview, setPreview] = useState(true);
+    [preview, setPreview] = useState(true),
+    [change, setChange] = useState(null),
+    [fileChange, setFileChange] = useState(null);
+  const opening = useRef(0);
   const markdownFile = file && isMarkdownFile(file);
+  const changesMatch = useMemo(
+    () =>
+      !fileChange ||
+      fileChangeHighlights(original, fileChange.diff, fileChange.patches)
+        .matches,
+    [original, fileChange],
+  );
   async function load(p) {
     setLoading(true);
     try {
@@ -242,15 +255,27 @@ export function FilePanel() {
       setLoading(false);
     }
   }
-  async function open(p) {
+  function returnToFile() {
+    opening.current++;
+    setChange(null);
+  }
+  async function open(p, selectedChange = null) {
+    if (file === p && text !== original) {
+      setFileChange(selectedChange);
+      if (selectedChange) setPreview(false);
+      returnToFile();
+      return;
+    }
     if (
       file &&
       text !== original &&
       !window.confirm("当前文件有未保存的修改。放弃修改并打开其他文件？")
     )
       return;
+    const request = ++opening.current;
     try {
       const r = await rpc("fs/readFile", { path: p });
+      if (request !== opening.current) return;
       if (/\.(png|jpe?g|gif|webp|svg)$/i.test(p)) {
         const ext = p
           .split(".")
@@ -261,6 +286,8 @@ export function FilePanel() {
         setFile(p);
         setText("");
         setOriginal("");
+        setChange(null);
+        setFileChange(null);
         return;
       }
       const body = b64decode(r.dataBase64);
@@ -272,9 +299,11 @@ export function FilePanel() {
       setFile(p);
       setText(body);
       setOriginal(body);
-      setPreview(true);
+      setPreview(!selectedChange);
+      setChange(null);
+      setFileChange(selectedChange);
     } catch (e) {
-      report(e);
+      if (request === opening.current) report(e);
     }
   }
   useEffect(() => {
@@ -291,10 +320,21 @@ export function FilePanel() {
   }, [text, original]);
   useEffect(() => {
     if (s.panelFile) {
-      open(s.panelFile);
+      if (typeof s.panelFile === "string") open(s.panelFile);
+      else if (s.panelFile.view === "full") open(s.panelFile.path, s.panelFile);
+      else {
+        opening.current++;
+        setChange(s.panelFile);
+      }
       set({ panelFile: null });
     }
   }, [s.panelFile]);
+  useEffect(
+    () => () => {
+      opening.current++;
+    },
+    [],
+  );
   async function save() {
     try {
       await rpc("fs/writeFile", { path: file, dataBase64: b64encode(text) });
@@ -308,12 +348,12 @@ export function FilePanel() {
     const key = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s" && file) {
         e.preventDefault();
-        save();
+        if (!change) save();
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [file, text]);
+  }, [file, text, change]);
   return (
     <>
       <div className="panel-heading">
@@ -333,13 +373,53 @@ export function FilePanel() {
           />
         </div>
       </div>
-      {file ? (
+      {change ? (
+        <>
+          <div className="file-tab">
+            <button onClick={returnToFile}>
+              <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
+              {file ? "返回文件" : "文件列表"}
+            </button>
+            <span title={change.path}>{basename(change.path)} · 变更</span>
+            <IconButton
+              icon={ArrowUpRight}
+              title="查看完整文件变更"
+              onClick={() => open(change.path, change)}
+            />
+            <IconButton
+              icon={Code}
+              title="打开源文件"
+              onClick={() => open(change.path)}
+            />
+            <IconButton
+              icon={Copy}
+              title="复制文件差异"
+              onClick={() => copy(change.diff)}
+            />
+          </div>
+          <div className="file-diff-view" role="region" aria-label="文件变更">
+            <div className="file-diff-path">
+              {change.oldPath && change.oldPath !== change.path && (
+                <>{change.oldPath} → </>
+              )}
+              {change.path}
+            </div>
+            <DiffBlock diff={change.diff} />
+          </div>
+          <div className="file-status">
+            {change.path}
+            <span>本轮变更</span>
+          </div>
+        </>
+      ) : file ? (
         <>
           <div className="file-tab">
             <button
               onClick={() => {
-                if (text === original || window.confirm("放弃未保存的修改？"))
+                if (text === original || window.confirm("放弃未保存的修改？")) {
                   setFile(null);
+                  setFileChange(null);
+                }
               }}
             >
               <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
@@ -349,6 +429,23 @@ export function FilePanel() {
               {basename(file)}
               {text !== original ? " •" : ""}
             </span>
+            {fileChange && (
+              <>
+                <IconButton
+                  icon={FileDiff}
+                  title="查看本轮差异片段"
+                  onClick={() => {
+                    opening.current++;
+                    setChange(fileChange);
+                  }}
+                />
+                <IconButton
+                  icon={Code}
+                  title="打开源文件"
+                  onClick={() => open(file)}
+                />
+              </>
+            )}
             {markdownFile && !image && (
               <IconButton
                 icon={preview ? Code : Eye}
@@ -397,10 +494,27 @@ export function FilePanel() {
               />
             </div>
           ) : (
-            <CodeEditor path={file} text={text} onChange={setText} />
+            <CodeEditor
+              path={file}
+              text={text}
+              onChange={setText}
+              diff={fileChange?.diff || ""}
+              patches={fileChange?.patches}
+            />
           )}
           <div className="file-status">
             {file}
+            {fileChange && (
+              <span
+                title={
+                  changesMatch
+                    ? "绿色为新增内容，红色为只读的删除内容"
+                    : "可通过顶部的差异按钮查看本轮记录"
+                }
+              >
+                {changesMatch ? "本轮变更" : "当前内容与本轮记录不同"}
+              </span>
+            )}
             {text !== original && <b>未保存</b>}
           </div>
         </>
@@ -447,27 +561,30 @@ export function FilePanel() {
 }
 
 export function DiffBlock({ diff }) {
+  const rows = diffRows(diff);
+  const digits = rows.reduce(
+    (width, row) =>
+      Math.max(
+        width,
+        String(row.oldLine ?? "").length,
+        String(row.newLine ?? "").length,
+      ),
+    3,
+  );
   return (
-    <div className="diff-block">
-      {(diff || "").split("\n").map((line, i) => (
-        <div
-          key={i}
-          className={
-            line.startsWith("+++") || line.startsWith("---")
-              ? "diff-meta"
-              : line.startsWith("+")
-                ? "diff-add"
-                : line.startsWith("-")
-                  ? "diff-remove"
-                  : line.startsWith("@@")
-                    ? "diff-hunk"
-                    : line.startsWith("diff ")
-                      ? "diff-file"
-                      : ""
-          }
-        >
-          <span className="diff-number">{i + 1}</span>
-          <code>{line || " "}</code>
+    <div
+      className="diff-block"
+      style={{ "--diff-number-width": `${digits}ch` }}
+    >
+      {rows.map((row, i) => (
+        <div key={i} className={row.className}>
+          <span className="diff-number diff-old-number" title="原文件行号">
+            {row.oldLine ?? ""}
+          </span>
+          <span className="diff-number diff-new-number" title="修改后文件行号">
+            {row.newLine ?? ""}
+          </span>
+          <code>{row.text || " "}</code>
         </div>
       ))}
     </div>
