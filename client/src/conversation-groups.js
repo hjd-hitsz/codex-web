@@ -1,12 +1,12 @@
 import { reasoningSummaries } from "./reasoning-summary.js";
 
-// 用户消息、提问和最终回答保持独立，其间的进度、摘要与工具记录合并为一个过程区域。
+// 每轮活动合并为一个过程区域，放在该轮最后一条用户消息或提问之后、最终回答之前。
 export function conversationGroups(items) {
   const lastInTurn = new Map();
   for (const item of items)
     if (item.turnId) lastInTurn.set(item.turnId, item.id);
   const groups = [];
-  let process;
+  const processes = new Map();
   for (const item of items) {
     if (item.type === "reasoning" && !reasoningSummaries(item.summary).length)
       continue;
@@ -19,16 +19,24 @@ export function conversationGroups(items) {
         (item.phase !== "commentary" &&
           lastInTurn.get(item.turnId) === item.id));
     if (item.type === "userMessage" || question || answer) {
-      process = null;
       groups.push({ type: "message", id: item.id, item });
+      const process = item.turnId && processes.get(item.turnId);
+      if ((item.type === "userMessage" || question) && process) {
+        groups.splice(groups.indexOf(process), 1);
+        groups.push(process);
+      }
     } else {
-      if (!process || process.turnId !== item.turnId) {
+      let process = processes.get(item.turnId);
+      // 无轮次信息的历史活动仅合并相邻记录，避免跨任务聚合。
+      if (!item.turnId && groups.at(-1) !== process) process = null;
+      if (!process) {
         process = {
           type: "process",
           id: "process-" + item.id,
           turnId: item.turnId,
           items: [],
         };
+        processes.set(item.turnId, process);
         groups.push(process);
       }
       process.items.push(item);

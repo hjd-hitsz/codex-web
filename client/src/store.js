@@ -607,9 +607,11 @@ export async function sendMessage(
       ...(text.trim() ? [{ type: "text", text, text_elements: [] }] : []),
       ...attachments.map((a) => a.input),
     ];
+    const running = state.active[thread.id];
     put({
       id: "optimistic-" + uid(),
       type: "userMessage",
+      turnId: running,
       content: input,
       optimistic: true,
     });
@@ -630,7 +632,6 @@ export async function sendMessage(
         },
       },
     };
-    const running = state.active[thread.id];
     const r = await rpc(
       running ? "turn/steer" : "turn/start",
       running
