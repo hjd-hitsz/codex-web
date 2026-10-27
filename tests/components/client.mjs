@@ -496,6 +496,8 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
     id: "new-projectless",
     cwd: root + "/chat-ABC123",
     threadSource: PROJECTLESS_SOURCE,
+    originator: "codex_lan_web",
+    source: "vscode",
     createdAt: 1,
     updatedAt: 1,
   };
@@ -512,7 +514,8 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
     if (method === "thread/start")
       return startFails ? { error: { message: "创建暂时失败" } } : { thread };
     if (method === "thread/resume") return { thread, cwd: thread.cwd };
-    if (method === "thread/list") return { data: [thread] };
+    if (method === "thread/list")
+      return { data: [{ ...thread, threadSource: null }] };
     if (method === "thread/turns/list" || method === "thread/items/list")
       return { data: [] };
     if (method === "lan/projectless/read") return { directories: {} };
@@ -555,6 +558,11 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
   assert.equal(start.params.sandbox, "danger-full-access");
   assert.equal(app.get().cwd, thread.cwd);
   await app.loadThreads();
+  assert.equal(app.get().threads[0].threadSource, null);
+  assert.deepEqual(
+    projectGroups(app.get().threads, [], [], {}, root).map(([path]) => path),
+    [""],
+  );
   app.set({ current: null, projectless: false });
   await app.openThread(thread.id);
   assert.equal(app.get().projectless, true);

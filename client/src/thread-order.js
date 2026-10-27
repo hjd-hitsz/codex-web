@@ -16,8 +16,10 @@ export function threadGroupPath(thread, projects, directories, root) {
       ? thread.cwd.slice(root.length + 1)
       : "";
   const webProjectless =
-    thread.threadSource === PROJECTLESS_SOURCE &&
-    /^chat-[A-Za-z0-9]{6}$/.test(workspace);
+    /^chat-[A-Za-z0-9]{6}$/.test(workspace) &&
+    (thread.threadSource === PROJECTLESS_SOURCE ||
+      // 列表响应可能省略来源标记，通过网页创建者和专用自动目录恢复分类。
+      (thread.threadSource == null && thread.originator === "codex_lan_web"));
   return directories[thread.id] === thread.cwd || webProjectless
     ? ""
     : thread.cwd;

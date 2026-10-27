@@ -112,6 +112,56 @@ test("网页新建的无项目对话通过持久来源和独立目录分组，�
   assert.equal(threadGroupPath(thread, [], {}, "/different-root"), thread.cwd);
 });
 
+test("列表缺少无项目来源时通过网页创建者与自动目录恢复分类，明确归属继续优先", () => {
+  const root = "/custom/codex-web/workspaces";
+  for (const threadSource of [null, undefined]) {
+    const thread = {
+      id: "web-list",
+      cwd: root + "/chat-ABC123",
+      originator: "codex_lan_web",
+      source: "vscode",
+      threadSource,
+    };
+    assert.equal(threadGroupPath(thread, [], {}, root), "");
+    assert.deepEqual(projectGroups([thread], [], [], {}, root), [
+      ["", [thread]],
+    ]);
+    assert.equal(
+      threadGroupPath({ ...thread, projectId: "assigned" }, [], {}, root),
+      thread.cwd,
+    );
+    assert.equal(threadGroupPath(thread, [thread.cwd], {}, root), thread.cwd);
+    for (const cwd of [
+      "/code/project",
+      thread.cwd + "/repo",
+      root + "/project",
+      root + "/chat-ABC1234",
+      root + "-other/chat-ABC123",
+    ]) {
+      assert.equal(threadGroupPath({ ...thread, cwd }, [], {}, root), cwd);
+    }
+    for (const originator of ["codex_cli_rs", "vscode", null, undefined]) {
+      assert.equal(
+        threadGroupPath({ ...thread, originator }, [], {}, root),
+        thread.cwd,
+      );
+    }
+    assert.equal(
+      threadGroupPath(
+        { ...thread, threadSource: "other-source" },
+        [],
+        {},
+        root,
+      ),
+      thread.cwd,
+    );
+    assert.equal(
+      threadGroupPath(thread, [], {}, "/different-root"),
+      thread.cwd,
+    );
+  }
+});
+
 test("跨对话页、轮次页读取完成时间，忽略运行中轮次并缓存；刷新元数据保留实际顺序", async () => {
   let updatedAt = 999;
   const requests = [];
