@@ -9,7 +9,7 @@ await mkdir(cache, { recursive: true });
 try {
   await build({
     stdin: {
-      contents: `export {Conversation, Composer, RichText} from './src/chat.jsx'; export {ReasoningEffortControl} from './src/reasoning-effort.jsx'; export {TerminalPanel} from './src/workspace.jsx'; export {VersionDetails} from './src/version.jsx'; export {ProjectGroup} from './src/project-group.jsx'; export * from './src/store.js';`,
+      contents: `export {Conversation, Composer, RichText} from './src/chat.jsx'; export {ReasoningEffortControl} from './src/reasoning-effort.jsx'; export {TerminalPanel, FilePanel} from './src/workspace.jsx'; export {VersionDetails} from './src/version.jsx'; export {ProjectGroup} from './src/project-group.jsx'; export * from './src/store.js';`,
       resolveDir: root + "client",
     },
     banner: {
@@ -32,6 +32,18 @@ try {
     external: ["react", "react-dom/client"],
     loader: { ".css": "empty" },
     plugins: [
+      {
+        name: "editor-fixture",
+        setup(builder) {
+          builder.onResolve({ filter: /^\.\/code-editor$/ }, () => ({
+            path: "code-editor",
+            namespace: "editor-fixture",
+          }));
+          builder.onLoad({ filter: /.*/, namespace: "editor-fixture" }, () => ({
+            contents: `import React from 'react'; export function CodeEditor({path,text,onChange}) {return React.createElement('textarea', {'aria-label': '文件源码', value: text, onChange: e => onChange(e.target.value)})}`,
+          }));
+        },
+      },
       {
         name: "portal-fixture",
         setup(builder) {

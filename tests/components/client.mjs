@@ -9,6 +9,7 @@ import { testThreadAccess } from "./thread-access.mjs";
 import { testThreadArchive } from "./thread-archive.mjs";
 import { testThreadNames } from "./thread-names.mjs";
 import { testAnnotations } from "./annotations.mjs";
+import { testFilePanel } from "./file-panel.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -87,6 +88,7 @@ await testMermaid(app);
       (respond) => (responseFor = respond),
     );
     await testAnnotations(app, requests, (respond) => (responseFor = respond));
+    await testFilePanel(app, requests, (respond) => (responseFor = respond));
   } finally {
     responseFor = previousResponse;
   }

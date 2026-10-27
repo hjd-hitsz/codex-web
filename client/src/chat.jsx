@@ -1,10 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import rehypeHighlight from "rehype-highlight";
-import "katex/dist/katex.min.css";
 import {
   ArrowUp,
   ArrowDown,
@@ -61,78 +55,11 @@ import { commandDescription } from "./command-description";
 import { UserInputForm } from "./user-input";
 import { ServiceTierToggle } from "./service-tier-toggle";
 import { ReasoningEffortControl } from "./reasoning-effort";
-import { MermaidBlock } from "./mermaid-block";
 import { MessageImage } from "./message-image";
-import { MessageLink } from "./message-link";
-import { messageUrlTransform } from "./image-source";
-import { annotationContexts, remarkAnnotations } from "./annotations";
-import {
-  AnnotationReference,
-  AnnotationContext,
-  AnnotatedUserText,
-  MessageAnnotations,
-} from "./message-annotations";
-
-function mathDelimiters(text) {
-  return (text || "")
-    .split(
-      /(\x60\x60\x60[\s\S]*?\x60\x60\x60|~~~[\s\S]*?~~~|\x60[^\x60]*\x60)/g,
-    )
-    .map((part, i) =>
-      i % 2
-        ? part
-        : part
-            .replace(/\\\(([\s\S]*?)\\\)/g, (_, math) => "$" + math + "$")
-            .replace(
-              /\\\[([\s\S]*?)\\\]/g,
-              (_, math) => "\n$$\n" + math + "\n$$\n",
-            ),
-    )
-    .join("");
-}
-export function RichText({ text, annotations = [] }) {
-  return (
-    <div className="markdown">
-      <AnnotationContext.Provider value={annotations}>
-        <Markdown
-          urlTransform={messageUrlTransform}
-          remarkPlugins={[remarkGfm, remarkMath, remarkAnnotations]}
-          rehypePlugins={[
-            rehypeKatex,
-            [rehypeHighlight, { plainText: ["mermaid"] }],
-          ]}
-          components={{
-            a: MessageLink,
-            pre: CodeBlock,
-            img: MessageImage,
-            "annotation-ref": AnnotationReference,
-          }}
-        >
-          {mathDelimiters(text)}
-        </Markdown>
-      </AnnotationContext.Provider>
-    </div>
-  );
-}
-function CodeBlock({ children }) {
-  const language = children?.props?.className?.match(/language-([\w-]+)/)?.[1];
-  const source = extractText(children);
-  if (language === "mermaid") return <MermaidBlock source={source} />;
-  return (
-    <div className="code-block">
-      <div className="code-heading">
-        <span>{language || "代码"}</span>
-        <IconButton icon={Copy} title="复制代码" onClick={() => copy(source)} />
-      </div>
-      <pre>{children}</pre>
-    </div>
-  );
-}
-function extractText(node) {
-  if (typeof node === "string") return node;
-  if (Array.isArray(node)) return node.map(extractText).join("");
-  return node?.props ? extractText(node.props.children) : "";
-}
+import { RichText } from "./rich-text";
+import { annotationContexts } from "./annotations";
+import { AnnotatedUserText, MessageAnnotations } from "./message-annotations";
+export { RichText } from "./rich-text";
 function Content({ content }) {
   return (
     <>

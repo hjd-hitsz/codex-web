@@ -22,6 +22,11 @@
   --red: #b64339;
   --link: #245cc0;
   --link-hover: #174798;
+  --syntax-keyword: #8b3da3;
+  --syntax-string: #287346;
+  --syntax-number: #985b20;
+  --syntax-title: #205caa;
+  --syntax-type: #8c4d22;
   --mono: Consolas, "Liberation Mono", monospace;
   --shadow: 0 12px 40px #00000012;
   font-size: 13px;
@@ -47,6 +52,11 @@
   --red: #f19083;
   --link: #8ab4f8;
   --link-hover: #b6d2ff;
+  --syntax-keyword: #d89aeb;
+  --syntax-string: #8bcca3;
+  --syntax-number: #e5b07b;
+  --syntax-title: #8ab4f8;
+  --syntax-type: #e2ba8c;
   --shadow: 0 12px 40px #0005;
 }
 @media (prefers-color-scheme: dark) {
@@ -67,6 +77,11 @@
     --red: #f19083;
     --link: #8ab4f8;
     --link-hover: #b6d2ff;
+    --syntax-keyword: #d89aeb;
+    --syntax-string: #8bcca3;
+    --syntax-number: #e5b07b;
+    --syntax-title: #8ab4f8;
+    --syntax-type: #e2ba8c;
     --shadow: 0 12px 40px #0005;
   }
 }
@@ -1056,21 +1071,27 @@ p {
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-literal {
-  color: #a24ab3;
+  color: var(--syntax-keyword);
 }
 .hljs-string,
 .hljs-attr {
-  color: #4b8665;
+  color: var(--syntax-string);
 }
 .hljs-number,
 .hljs-built_in {
-  color: #b0783e;
+  color: var(--syntax-number);
 }
 .hljs-comment {
   color: var(--muted);
 }
 .hljs-title {
-  color: #4986b5;
+  color: var(--syntax-title);
+}
+.hljs-type {
+  color: var(--syntax-type);
+}
+.hljs-meta {
+  color: var(--syntax-keyword);
 }
 .activity {
   margin: 4px 0;
@@ -1814,6 +1835,17 @@ select option {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+.file-markdown-preview {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 20px;
+}
+.file-tab,
+.file-status {
+  flex-shrink: 0;
 }
 .cm-editor.cm-focused {
   outline: none;

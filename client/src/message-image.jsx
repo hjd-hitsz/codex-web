@@ -3,9 +3,12 @@ import { rpc, useStore } from "./store";
 import { imageDataUrl, localImagePath } from "./image-source";
 import { ImageViewer } from "./image-viewer";
 
-export function MessageImage({ src, alt = "", title }) {
+export function MessageImage({ src, alt = "", title, cwd: baseDirectory }) {
   const { connected, current, cwd, defaultCwd } = useStore();
-  const path = localImagePath(src, current?.cwd || cwd || defaultCwd);
+  const path = localImagePath(
+    src,
+    baseDirectory ?? (current?.cwd || cwd || defaultCwd),
+  );
   const [result, setResult] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const [failedUrl, setFailedUrl] = useState(null);

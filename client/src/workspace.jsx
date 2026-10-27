@@ -18,25 +18,12 @@ import {
   GitPullRequest,
   Copy,
   Search,
+  Eye,
+  Code,
 } from "lucide-react";
-import { EditorState } from "@codemirror/state";
-import {
-  EditorView,
-  lineNumbers,
-  highlightActiveLine,
-  drawSelection,
-  keymap,
-} from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import {
-  syntaxHighlighting,
-  defaultHighlightStyle,
-} from "@codemirror/language";
-import { javascript } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { cpp } from "@codemirror/lang-cpp";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
+import { CodeEditor } from "./code-editor";
+import { isMarkdownFile } from "./editor-language";
+import { RichText } from "./rich-text";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -225,62 +212,6 @@ function TreeRow({ entry, path, depth = 0, onOpen }) {
     </>
   );
 }
-function language(path) {
-  if (/\.(jsx?|tsx?)$/.test(path))
-    return javascript({ jsx: true, typescript: /tsx?$/.test(path) });
-  if (/\.py$/.test(path)) return python();
-  if (/\.(cpp|cc|c|h|hpp)$/.test(path)) return cpp();
-  if (/\.json$/.test(path)) return json();
-  if (/\.md$/.test(path)) return markdown();
-  return [];
-}
-function CodeEditor({ path, text, onChange }) {
-  const parent = useRef(),
-    view = useRef(),
-    handler = useRef(onChange);
-  handler.current = onChange;
-  useEffect(() => {
-    const editor = new EditorView({
-      parent: parent.current,
-      state: EditorState.create({
-        doc: text,
-        extensions: [
-          lineNumbers(),
-          history(),
-          drawSelection(),
-          highlightActiveLine(),
-          keymap.of([...defaultKeymap, ...historyKeymap]),
-          syntaxHighlighting(defaultHighlightStyle),
-          language(path),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) handler.current(update.state.doc.toString());
-          }),
-          EditorView.theme({
-            "&": {
-              height: "100%",
-              fontSize: "12px",
-              backgroundColor: "var(--bg)",
-              color: "var(--fg)",
-            },
-            ".cm-scroller": { overflow: "auto", fontFamily: "var(--mono)" },
-            ".cm-gutters": {
-              backgroundColor: "var(--subtle)",
-              color: "var(--muted)",
-              border: "none",
-            },
-            ".cm-activeLine": { backgroundColor: "var(--hover)" },
-            ".cm-activeLineGutter": { backgroundColor: "var(--hover)" },
-            ".cm-content": { padding: "12px 0" },
-            ".cm-cursor": { borderLeftColor: "var(--fg)" },
-          }),
-        ],
-      }),
-    });
-    view.current = editor;
-    return () => editor.destroy();
-  }, [path]);
-  return <div className="code-editor" ref={parent} />;
-}
 export function FilePanel() {
   const s = useStore();
   const [entries, setEntries] = useState([]),
@@ -290,7 +221,9 @@ export function FilePanel() {
     [original, setOriginal] = useState(""),
     [loading, setLoading] = useState(false),
     [filter, setFilter] = useState(""),
-    [image, setImage] = useState(null);
+    [image, setImage] = useState(null),
+    [preview, setPreview] = useState(true);
+  const markdownFile = file && isMarkdownFile(file);
   async function load(p) {
     setLoading(true);
     try {
@@ -339,6 +272,7 @@ export function FilePanel() {
       setFile(p);
       setText(body);
       setOriginal(body);
+      setPreview(true);
     } catch (e) {
       report(e);
     }
@@ -415,6 +349,14 @@ export function FilePanel() {
               {basename(file)}
               {text !== original ? " •" : ""}
             </span>
+            {markdownFile && !image && (
+              <IconButton
+                icon={preview ? Code : Eye}
+                title={preview ? "编辑 Markdown 源码" : "预览 Markdown"}
+                aria-pressed={preview}
+                onClick={() => setPreview(!preview)}
+              />
+            )}
             <IconButton
               icon={Paperclip}
               title="将文件加入消息"
@@ -444,8 +386,18 @@ export function FilePanel() {
             <div className="image-preview">
               <img src={image} />
             </div>
+          ) : markdownFile && preview ? (
+            <div
+              className="file-markdown-preview"
+              aria-label="Markdown 文件预览"
+            >
+              <RichText
+                text={text}
+                cwd={file.slice(0, file.lastIndexOf("/")) || "/"}
+              />
+            </div>
           ) : (
-            <CodeEditor path={file} text={original} onChange={setText} />
+            <CodeEditor path={file} text={text} onChange={setText} />
           )}
           <div className="file-status">
             {file}

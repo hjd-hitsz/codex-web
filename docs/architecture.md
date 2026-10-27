@@ -19,7 +19,11 @@ Node.js 网页桥接服务
 
 `client/src/main.jsx` 负责应用布局、项目侧栏、对话管理和设置弹窗；`chat.jsx` 负责消息、工作过程、输入框及交互请求；`workspace.jsx` 负责文件编辑、差异和终端。
 
-`chat.jsx` 的 `RichText` 使用 React Markdown 渲染 GFM、数学公式与代码高亮，将 `mermaid` 代码块交给 `mermaid-block.jsx`。图表源码稳定 250 毫秒后按需加载 Mermaid，`mermaid-renderer.js` 串行配置主题并绘制 SVG，使用 `securityLevel: strict` 和 `suppressErrorRendering: true`，临时绘制节点在成功或失败后清理。图表跟随网页及系统的深浅主题；源码或主题变化时忽略旧请求的迟到结果。绘制期间和解析失败时保留源码，成功后提供图表与源码切换及源码复制。渲染器和各图表模块随网页打包，通过本站加载。
+`rich-text.jsx` 的 `RichText` 供消息和文件预览共用，使用 React Markdown 渲染 GFM、数学公式与代码高亮，将 `mermaid` 代码块交给 `mermaid-block.jsx`。图表源码稳定 250 毫秒后按需加载 Mermaid，`mermaid-renderer.js` 串行配置主题并绘制 SVG，使用 `securityLevel: strict` 和 `suppressErrorRendering: true`，临时绘制节点在成功或失败后清理。图表跟随网页及系统的深浅主题；源码或主题变化时忽略旧请求的迟到结果。绘制期间和解析失败时保留源码，成功后提供图表与源码切换及源码复制。渲染器和各图表模块随网页打包，通过本站加载。
+
+`workspace.jsx` 的文件面板对 `.md`、`.markdown`、`.mdown`、`.mkd` 默认显示 Markdown 预览，扩展名忽略大小写。源码与预览共用当前编辑文本，切换时保留未保存内容，重新进入编辑器时使用当前文本创建文档；保存、关闭和打开其他文件继续执行原有的保存与放弃确认。`RichText` 通过目录上下文将文件所在目录传给链接和图片组件，以此解析相对资源，消息图片继续使用对话工作目录。Markdown 保留 React Markdown 的 URL 过滤规则，HTML 内容按安全的默认规则处理。
+
+`code-editor.jsx` 负责 CodeMirror 编辑器，`editor-language.js` 按扩展名及 `CMakeLists.txt`、`Dockerfile`、`.env` 等文件名选择语法。原生解析器处理 JavaScript / TypeScript、Python、C / C++、JSON、Markdown、HTML / XML 与 CSS，流式解析器补充 Shell、YAML、TOML、Rust、Go、Java、C#、SQL、CMake、Dockerfile、Lua 和属性配置。未知类型继续提供纯文本编辑。编辑器与 Markdown 代码块共用语法颜色变量，随浅色、深色及系统主题变化。
 
 `annotations.js` 解析桌面端的 `# Response annotations:` 前缀和 `<response-annotations>` JSON 数组，每项保留 `text`、可选的 `annotation` 与 `source`。`annotationContexts` 按轮次和前置用户消息为助手回复关联批注，普通补充消息清除后续回复的旧批注上下文；未加载原始用户消息时，编号引用提示加载相关历史。Markdown 插件只将普通文字中的 `:codex-annotation{index="N"}` 转成行内编号，代码、公式和链接保持各自解析规则。`message-annotations.jsx` 展示历史批注卡片及可展开的行内引用，通过稳定的组件与 React Context 保持流式更新期间的展开状态。
 
@@ -125,3 +129,5 @@ Vite 在构建时把版本信息和构建时间同时写入前端常量及根目
 `tests/components/thread-archive.mjs` 使用模拟后端验证历史读取、恢复、发送、整理上下文与审查遇到外部归档时的状态同步，以及归档与恢复通知、草稿和项目顺序保留、归档恢复操作和切换聊天期间的迟到响应隔离。
 
 `server/tests/thread-names.test.mjs` 使用模拟后端验证标题生成、临时会话清理、并发合并、串行调度、手动标题优先、归档取消、断线和失败重试，以及网页关闭后的持久化；`tests/components/thread-names.mjs` 验证标题通知更新与列表、打开请求的迟到结果隔离。
+
+`tests/components/file-panel.mjs` 使用模拟文件读写和编辑器边界，验证 Markdown 排版、表格、公式、代码高亮、相对链接与图片，以及源码切换、未保存内容保护、保存和代码文件入口。`client/tests/editor-language.test.js` 用实际解析器验证常见文件类型的语法标记、大小写与扩展名识别及纯文本回退。浏览器验证时应检查实际 CodeMirror 编辑、主题颜色和预览布局。

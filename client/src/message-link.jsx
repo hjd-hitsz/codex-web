@@ -17,6 +17,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { set } from "./store";
+import { localImagePath } from "./image-source";
 
 function PythonIcon(props) {
   return (
@@ -69,7 +70,9 @@ function linkIcon(href) {
   return File;
 }
 
-export function MessageLink({ href, title, children, node }) {
+export function MessageLink({ href, title, children, node, cwd }) {
+  if (cwd && href && !href.startsWith("#"))
+    href = localImagePath(href, cwd) || href;
   const Icon = linkIcon(href || "");
   const imageOnly = node?.children?.every(
     (child) =>
@@ -85,7 +88,10 @@ export function MessageLink({ href, title, children, node }) {
       onClick={(event) => {
         if (href?.startsWith("/") && !href.startsWith("//")) {
           event.preventDefault();
-          set({ panel: "files", panelFile: href.replace(/:\d+$/, "") });
+          set({
+            panel: "files",
+            panelFile: href.replace(/:\d+(?::\d+)?$/, ""),
+          });
         }
       }}
     >
