@@ -109,25 +109,25 @@ const app = await import(
     socket.emit("lan/state", connectionState(true));
     speedView = create(React.createElement(app.Composer));
   });
-  const speedSelect = () =>
+  const speedToggle = () =>
     speedView.root.findByProps({ "aria-label": "速度模式" });
   assert.equal(app.get().serviceTier, "priority");
-  assert.equal(speedSelect().props.value, "priority");
+  assert.equal(speedToggle().props["aria-pressed"], true);
   assert(JSON.stringify(speedView.toJSON()).includes("Fast"));
+  assert.equal(speedToggle().type, "button");
+  assert.equal(speedToggle().findAllByType("select").length, 0);
   assert.equal(
-    speedView.root.findByProps({
-      className: "select-control service-tier-select",
-    }).props["data-accelerated"],
-    true,
+    speedToggle().findAllByType("svg")[0].props.fill,
+    "currentColor",
   );
+  assert.equal(speedView.root.findAllByProps({ title: "选择技能" }).length, 0);
 
-  await act(async () =>
-    speedSelect().props.onChange({ target: { value: "" } }),
-  );
+  await act(async () => speedToggle().props.onClick());
   await act(async () => socket.emit("lan/state", connectionState(false)));
   await act(async () => socket.emit("lan/state", connectionState(true)));
   assert.equal(app.get().serviceTier, null);
-  assert.equal(speedSelect().props.value, "");
+  assert.equal(speedToggle().props["aria-pressed"], false);
+  assert.equal(speedToggle().findAllByType("svg")[0].props.fill, "none");
   await act(async () => {
     app.newChat(thread.cwd);
     app.setDraft("以标准速度新建");
@@ -145,11 +145,11 @@ const app = await import(
   await act(async () => socket.emit("lan/state", connectionState(true)));
   assert.equal(app.get().current.id, thread.id);
   assert.equal(app.get().serviceTier, null);
-  assert.equal(speedSelect().props.value, "");
+  assert.equal(speedToggle().props["aria-pressed"], false);
 
   resumedTier = "fast";
   await act(async () => app.openThread(thread.id));
-  assert.equal(speedSelect().props.value, "priority");
+  assert.equal(speedToggle().props["aria-pressed"], true);
   await act(async () => {
     app.setDraft("恢复 Fast 后发送");
     assert.equal(await app.sendMessage(), true);
@@ -161,7 +161,7 @@ const app = await import(
   resumedTier = null;
   await act(async () => app.openThread(thread.id));
   assert.equal(app.get().serviceTier, null);
-  assert.equal(speedSelect().props.value, "");
+  assert.equal(speedToggle().props["aria-pressed"], false);
   await act(async () =>
     socket.emit("thread/settings/updated", {
       threadId: "other-speed-thread",
@@ -175,18 +175,16 @@ const app = await import(
       threadSettings: { serviceTier: "priority" },
     }),
   );
-  assert.equal(speedSelect().props.value, "priority");
+  assert.equal(speedToggle().props["aria-pressed"], true);
   await act(async () =>
     socket.emit("thread/settings/updated", {
       threadId: thread.id,
       threadSettings: { serviceTier: null },
     }),
   );
-  assert.equal(speedSelect().props.value, "");
+  assert.equal(speedToggle().props["aria-pressed"], false);
 
-  await act(async () =>
-    speedSelect().props.onChange({ target: { value: "priority" } }),
-  );
+  await act(async () => speedToggle().props.onClick());
   await act(async () => {
     app.newChat(thread.cwd);
     app.setDraft("新建 Fast 对话");
@@ -202,7 +200,7 @@ const app = await import(
   );
   await act(async () => {
     app.set({ active: { [thread.id]: "running-speed-turn" } });
-    speedSelect().props.onChange({ target: { value: "" } });
+    speedToggle().props.onClick();
     app.setDraft("运行中补充");
     assert.equal(await app.sendMessage(), true);
   });
@@ -223,8 +221,11 @@ const app = await import(
     null,
   );
 
+  resumedTier = "ultrafast";
+  await act(async () => app.openThread(thread.id));
+  assert.equal(speedToggle().props["aria-pressed"], true);
+  assert(speedToggle().props.title.includes("Ultra Fast"));
   await act(async () => {
-    speedSelect().props.onChange({ target: { value: "ultrafast" } });
     app.setDraft("模型目录中的其他速度");
     assert.equal(await app.sendMessage(), true);
   });
@@ -238,33 +239,26 @@ const app = await import(
       .props.onChange({ target: { value: "standard-model" } }),
   );
   assert.equal(app.get().serviceTier, null);
-  assert.deepEqual(
-    speedSelect()
-      .findAllByType("option")
-      .map((o) => o.props.value),
-    [""],
-  );
+  assert.equal(speedToggle().props.disabled, true);
   await act(async () =>
     speedView.root
       .findByProps({ "aria-label": "模型" })
       .props.onChange({ target: { value: "legacy-model" } }),
   );
-  assert.deepEqual(
-    speedSelect()
-      .findAllByType("option")
-      .map((o) => o.props.value),
-    ["", "priority"],
-  );
+  assert.equal(speedToggle().props.disabled, false);
   await act(async () => {
-    speedSelect().props.onChange({ target: { value: "priority" } });
+    speedToggle().props.onClick();
     app.selectModel(models[0]);
   });
   assert.equal(app.get().serviceTier, "priority");
   assert.equal(app.get().effort, "high");
   resumedTier = "custom-speed";
   await act(async () => app.openThread(thread.id));
-  assert.equal(speedSelect().props.value, "custom-speed");
+  assert.equal(speedToggle().props["aria-pressed"], true);
   assert(JSON.stringify(speedView.toJSON()).includes("custom-speed"));
+  await act(async () => speedToggle().props.onClick());
+  assert.equal(app.get().serviceTier, null);
+  assert.equal(speedToggle().props["aria-pressed"], false);
   await act(async () => {
     speedView.unmount();
     app.newChat("/default");
@@ -281,7 +275,164 @@ const app = await import(
   responseFor = (m) => (m.method === "thread/list" ? { data: [] } : {});
   requests.length = 0;
   console.log(
-    "PASS Fast 配置回显、标准与 Fast 新建和发送、恢复与通知同步、重连、运行中补充、失败重试及模型速度能力",
+    "PASS 闪电按钮切换与状态、移除技能按钮、Fast 配置和发送、恢复与通知同步、重连及失败重试",
+  );
+}
+{
+  const models = [
+    {
+      id: "effort-model",
+      model: "effort-model",
+      defaultReasoningEffort: "high",
+      supportedReasoningEfforts: ["low", "medium", "high", "xhigh"].map(
+        (reasoningEffort) => ({ reasoningEffort }),
+      ),
+    },
+    {
+      id: "other-effort-model",
+      model: "other-effort-model",
+      defaultReasoningEffort: "none",
+      supportedReasoningEfforts: ["none", "high", "ultra"].map(
+        (reasoningEffort) => ({ reasoningEffort }),
+      ),
+    },
+    {
+      id: "fixed-effort-model",
+      model: "fixed-effort-model",
+      defaultReasoningEffort: "high",
+      supportedReasoningEfforts: [{ reasoningEffort: "high" }],
+    },
+  ];
+  app.set({
+    models,
+    model: models[0].model,
+    effort: "",
+    current: { id: "effort-fixture" },
+    items: [],
+    active: {},
+  });
+  responseFor = (m) =>
+    ["thread/list", "thread/turns/list"].includes(m.method) ? { data: [] } : {};
+  let effortView;
+  await act(async () => {
+    effortView = create(React.createElement(app.Composer));
+  });
+  const trigger = () =>
+    effortView.root.findByProps({ "aria-label": "调整思考强度" });
+  const range = () => effortView.root.findByProps({ type: "range" });
+  assert.equal(effortView.root.findAllByProps({ type: "range" }).length, 0);
+  assert.equal(trigger().props.title, "思考强度：高");
+  await act(async () => trigger().props.onClick());
+  assert.equal(trigger().props["aria-expanded"], true);
+  assert.deepEqual(
+    [
+      range().props.min,
+      range().props.max,
+      range().props.step,
+      range().props.value,
+    ],
+    [0, 3, 1, 2],
+  );
+  assert.equal(range().props["aria-valuetext"], "高");
+  assert.equal(
+    effortView.root.findAll(
+      (n) => n.type === "select" && n.props["aria-label"] === "思考强度",
+    ).length,
+    0,
+  );
+  await act(async () => {
+    range().props.onChange({ target: { value: "0" } });
+    app.setDraft("滑块选择低强度");
+    assert.equal(await app.sendMessage(), true);
+  });
+  const low = requests.findLast((m) => m.method === "turn/start").params;
+  assert.equal(low.effort, "low");
+  assert.equal(low.collaborationMode.settings.reasoning_effort, "low");
+  assert.equal(range().props["aria-valuetext"], "低");
+  await act(async () => range().props.onChange({ target: { value: "3" } }));
+  assert.equal(app.get().effort, "xhigh");
+  assert.equal(trigger().props.title, "思考强度：极高");
+  await act(async () =>
+    effortView.root
+      .findByProps({ "aria-label": "模型" })
+      .props.onChange({ target: { value: models[1].model } }),
+  );
+  assert.equal(trigger().props["aria-expanded"], false);
+  await act(async () => trigger().props.onClick());
+  assert.deepEqual(
+    [range().props.max, range().props.value, range().props["aria-valuetext"]],
+    [2, 0, "无"],
+  );
+  await act(async () => {
+    range().props.onChange({ target: { value: "2" } });
+    app.setDraft("按模型档位发送超高强度");
+    assert.equal(await app.sendMessage(), true);
+  });
+  assert.equal(
+    requests.findLast((m) => m.method === "turn/start").params.effort,
+    "ultra",
+  );
+  let stopped = false;
+  await act(async () =>
+    effortView.root
+      .findByProps({ className: "reasoning-effort" })
+      .props.onKeyDown({
+        key: "Escape",
+        stopPropagation() {
+          stopped = true;
+        },
+      }),
+  );
+  assert(stopped);
+  assert.equal(trigger().props["aria-expanded"], false);
+  await act(async () => trigger().props.onClick());
+  await act(async () =>
+    effortView.root
+      .findByProps({ className: "reasoning-effort" })
+      .props.onBlur({
+        currentTarget: { contains: () => false },
+        relatedTarget: null,
+      }),
+  );
+  assert.equal(trigger().props["aria-expanded"], false);
+  await act(async () => app.selectModel(models[2]));
+  assert.equal(trigger().props.disabled, true);
+  let inlineView;
+  await act(async () => {
+    inlineView = create(
+      React.createElement(app.ReasoningEffortControl, { inline: true }),
+    );
+  });
+  assert.equal(
+    inlineView.root.findByProps({ type: "range" }).props.disabled,
+    true,
+  );
+  await act(async () => app.selectModel(models[0]));
+  assert.equal(inlineView.root.findAllByType("button").length, 0);
+  await act(async () =>
+    inlineView.root
+      .findByProps({ type: "range" })
+      .props.onChange({ target: { value: "1" } }),
+  );
+  assert.equal(app.get().effort, "medium");
+  assert.equal(trigger().props.title, "思考强度：中");
+  await act(async () => {
+    inlineView.unmount();
+    effortView.unmount();
+    app.newChat("/default");
+    app.set({
+      models: [],
+      model: "",
+      effort: "",
+      threads: [],
+      items: [],
+      error: "",
+    });
+  });
+  responseFor = (m) => (m.method === "thread/list" ? { data: [] } : {});
+  requests.length = 0;
+  console.log(
+    "PASS 思考强度滑块默认档位、模型支持范围、拖动发送、模型切换、收起交互及弹窗共用状态",
   );
 }
 let projectView;

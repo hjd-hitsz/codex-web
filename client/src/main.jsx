@@ -61,7 +61,8 @@ import {
   loadSkills,
 } from "./store";
 import { Conversation, Composer } from "./chat";
-import { ServiceTierSelect } from "./service-tier-select";
+import { ServiceTierToggle } from "./service-tier-toggle";
+import { ReasoningEffortControl } from "./reasoning-effort";
 import {
   IconButton,
   Empty,
@@ -670,18 +671,7 @@ function SettingsDialog() {
   );
 }
 function ModelDialog() {
-  const s = useStore(),
-    model = s.models.find((m) => m.model === s.model);
-  const labels = {
-    low: "低",
-    medium: "中",
-    high: "高",
-    xhigh: "极高",
-    max: "最高",
-    ultra: "超高",
-    minimal: "极低",
-    none: "无",
-  };
+  const s = useStore();
   return (
     <div className="settings-body">
       <p className="section-description">设置应用于下一条消息。</p>
@@ -700,21 +690,9 @@ function ModelDialog() {
           </button>
         ))}
       </div>
-      <h3>思考强度</h3>
-      <div className="reasoning-options">
-        {model?.supportedReasoningEfforts?.map((e) => (
-          <button
-            key={e.reasoningEffort}
-            className={s.effort === e.reasoningEffort ? "selected" : ""}
-            onClick={() => set({ effort: e.reasoningEffort })}
-            title={e.description}
-          >
-            {labels[e.reasoningEffort] || e.reasoningEffort}
-          </button>
-        ))}
-      </div>
+      <ReasoningEffortControl inline />
       <h3>速度模式</h3>
-      <ServiceTierSelect />
+      <ServiceTierToggle />
       <p className="section-description">
         速度设置应用于下一轮任务，Fast 模式会增加用量。
       </p>

@@ -21,7 +21,9 @@ Node.js 网页桥接服务
 
 `store.js` 维护共享状态和 JSON-RPC 连接，处理历史加载、实时通知及重连。请求发送前统一经过 `execution-policy.js`：对话生命周期和任务使用完全访问、无需审批，直接命令使用完全访问沙箱策略。
 
-速度模式独立于模型和思考强度，保存在 `store.js.serviceTier`。首次连接从 `config/read.config.service_tier` 初始化，恢复对话以 `thread/resume.serviceTier` 为准，当前对话的 `thread/settings/updated` 通知同步其他页面的变化；重连保留网页已选的标准速度。`service-tier.js` 从模型目录的 `serviceTiers` 获取选项，旧目录使用 `additionalSpeedTiers`，将 Fast 的 `fast` / `priority` 别名解析为目录公布的 ID。`service-tier-select.jsx` 同时用于输入框和模型弹窗，标准与 Fast 始终显示文字，其他档位使用目录名称，历史未知档位保留原值显示。切换模型时保留新模型支持的档位，否则恢复标准。
+速度模式独立于模型和思考强度，保存在 `store.js` 的 `serviceTier` 状态中。首次连接从 `config/read.config.service_tier` 初始化，恢复对话以 `thread/resume.serviceTier` 为准，当前对话的 `thread/settings/updated` 通知同步其他页面的变化；重连保留网页已选的标准速度。`service-tier.js` 从模型目录的 `serviceTiers` 获取能力，旧目录使用 `additionalSpeedTiers`，将 Fast 的 `fast` / `priority` 别名解析为目录公布的 ID。`service-tier-toggle.jsx` 在输入框和模型弹窗提供闪电图标，点击切换标准与 Fast；绿色实心表示加速，灰色描边表示标准，通过 `aria-pressed` 和悬浮提示报告状态。模型未提供 Fast 时禁用开启入口，恢复的其他档位保留原值并在提示中显示名称，点击可切回标准。切换模型时保留新模型支持的档位，否则恢复标准。
+
+`reasoning-effort.jsx` 在输入框提供紧凑的思考强度入口，展开后使用原生 `range` 滑块按模型的 `supportedReasoningEfforts` 逐档调整；模型设置弹窗直接显示同一滑块。未显式选择时显示模型默认强度，修改后更新 `effort` 并随下一轮任务发送。滑块支持指针拖动和方向键；切换模型或对话时收起浮层，焦点移出或按 Escape 同样收起。单一档位的模型显示固定强度。输入框移除技能按钮，技能入口保留在侧栏和快捷命令中；窄屏保持思考强度、速度与计划模式可用。
 
 `thread/start` 和 `turn/start` 显式传入 `serviceTier`，选择标准时传 `null` 清除已有档位，避免省略字段后继续继承 Fast。速度选择作用于下一轮任务；`turn/steer` 继续只提交补充内容，沿用正在运行的轮次速度。速度配置使用现有 Codex 后端，无需额外模型请求或修改全局配置。[官方速度说明](https://learn.chatgpt.com/docs/agent-configuration/speed)介绍 Fast 模式及用量。
 
@@ -79,7 +81,7 @@ Vite 在构建时把版本信息和构建时间同时写入前端常量及根目
 
 - `client/tests`：完成时间与项目排序、自动目录与明确目录的分组、对话分组、提问独立展示、最终回复操作、摘要解析、翻译缓存、命令描述与组合语法及统一权限策略。
 - `server/tests`：环境配置、HTTP 资源更新、健康检查、桌面自动目录识别与刷新、多个客户端请求 ID 隔离、提问广播与重连恢复及解决同步，以及对话订阅的断连、共享、迟到响应、后台任务与心跳回收。
-- `tests/components`：直接渲染实际 React 组件，验证速度配置回显、标准与 Fast 发送、恢复和通知同步、模型速度能力及重连与失败重试；同时验证未分类展示与折叠、明确目录的新建入口、生成时最新提示更新与完成后过程折叠、命令描述与原始命令详情、中文标题、发送快捷键、同步与异步提问的回答和失败重试、新对话与已有对话的草稿转存、成功清理与等待期间的草稿保留、权限入口移除、终端配色和退出折叠。
+- `tests/components`：直接渲染实际 React 组件，验证闪电按钮状态和切换、速度配置回显、标准与 Fast 发送、恢复和通知同步、模型速度能力及重连与失败重试，验证思考强度滑块的模型档位、默认值、调整后发送和浮层收起，以及技能按钮移除；同时验证未分类展示与折叠、明确目录的新建入口、生成时最新提示更新与完成后过程折叠、命令描述与原始命令详情、中文标题、发送快捷键、同步与异步提问的回答和失败重试、新对话与已有对话的草稿转存、成功清理与等待期间的草稿保留、权限入口移除、终端配色和退出折叠。
 - `tests/package.test.mjs`：将真实发行包安装到临时全局 prefix，使用模拟后端和服务命令验证命令入口、用户配置、网页资源及 systemd 服务生成。
 - `tests/version.test.mjs`：在临时 Git 仓库验证正式标签、开发提交、未提交修改、安装包来源、版本准备及发布校验。
 

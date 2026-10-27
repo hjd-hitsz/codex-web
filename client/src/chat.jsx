@@ -57,7 +57,8 @@ import { useSummaryTranslation } from "./use-summary-translation";
 import { conversationGroups } from "./conversation-groups";
 import { commandDescription } from "./command-description";
 import { UserInputForm } from "./user-input";
-import { ServiceTierSelect } from "./service-tier-select";
+import { ServiceTierToggle } from "./service-tier-toggle";
+import { ReasoningEffortControl } from "./reasoning-effort";
 
 function mathDelimiters(text) {
   return (text || "")
@@ -737,17 +738,6 @@ export function Composer() {
     files = useRef();
   const shortcuts = useComposerShortcuts(area);
   const active = s.active[s.current?.id];
-  const model = s.models.find((m) => m.model === s.model);
-  const effortLabels = {
-    minimal: "极低",
-    low: "低",
-    medium: "中",
-    high: "高",
-    xhigh: "极高",
-    max: "最高",
-    ultra: "超高",
-    none: "无",
-  };
   useEffect(() => {
     if (area.current) {
       area.current.style.height = "auto";
@@ -877,22 +867,8 @@ export function Composer() {
               </select>
               <ChevronDown size={12} />
             </label>
-            <label className="select-control effort-select">
-              <select
-                aria-label="思考强度"
-                value={s.effort}
-                onChange={(e) => set({ effort: e.target.value })}
-              >
-                <option value="">默认强度</option>
-                {model?.supportedReasoningEfforts?.map((e) => (
-                  <option key={e.reasoningEffort} value={e.reasoningEffort}>
-                    {effortLabels[e.reasoningEffort] || e.reasoningEffort}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={12} />
-            </label>
-            <ServiceTierSelect />
+            <ReasoningEffortControl />
+            <ServiceTierToggle />
             <IconButton
               icon={ListChecks}
               title="计划模式"
@@ -900,11 +876,6 @@ export function Composer() {
               onClick={() =>
                 set({ mode: s.mode === "plan" ? "default" : "plan" })
               }
-            />
-            <IconButton
-              icon={Sparkles}
-              title="选择技能"
-              onClick={() => set({ modal: { type: "skills" } })}
             />
           </div>
           <div className="send-controls">
