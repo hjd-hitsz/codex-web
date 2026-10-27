@@ -273,19 +273,15 @@ function Reasoning({ item }) {
   ));
 }
 function ReasoningPart({ title, body }) {
-  const [open, setOpen] = useState(false);
   const heading = useSummaryTranslation(title);
-  const content = useSummaryTranslation(body, open);
+  const content = useSummaryTranslation(body);
   const status = heading.pending ? (
     <LoaderCircle size={12} className="spin" aria-label="正在翻译标题" />
   ) : null;
   return (
     <>
       {body ? (
-        <details
-          className="activity reasoning-summary"
-          onToggle={(event) => setOpen(event.currentTarget.open)}
-        >
+        <details className="activity reasoning-summary">
           <summary className="activity-summary" title={title}>
             <Brain size={15} />
             <span>{heading.text}</span>

@@ -9,14 +9,14 @@ const translator = createSummaryTranslator(
   localStorage,
 );
 
-export function useSummaryTranslation(text, enabled = true) {
+export function useSummaryTranslation(text) {
   const [result, setResult] = useState({}),
     [attempt, retry] = useState(0);
   const cached = translator.cached(text);
   useEffect(() => {
-    if (!enabled || cached !== undefined) return;
+    if (cached !== undefined) return;
     let active = true;
-    // 等待流式文本短暂停顿，避免翻译尚未完成的标题。
+    // 标题和正文均等待流式文本短暂停顿，再进入同一翻译队列。
     const timer = setTimeout(() => {
       translator.translate(text).then(
         (value) => {
@@ -31,12 +31,11 @@ export function useSummaryTranslation(text, enabled = true) {
       active = false;
       clearTimeout(timer);
     };
-  }, [text, enabled, attempt, cached]);
+  }, [text, attempt, cached]);
   const current = result.source === text ? result : {};
   return {
     text: cached ?? current.value ?? text,
-    pending:
-      enabled && cached === undefined && !current.value && !current.error,
+    pending: cached === undefined && !current.value && !current.error,
     error: current.error,
     retry: () => {
       setResult({});

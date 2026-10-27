@@ -1120,6 +1120,11 @@ console.log(
   const originalFetch = globalThis.fetch;
   const batches = [];
   const requestCount = requests.length;
+  const translations = new Map([
+    ["Reviewing local configuration", "检查本地配置"],
+    ["Inspecting application settings", "检查应用设置"],
+    ["Inspecting application settings and storage", "检查应用设置与存储"],
+  ]);
   globalThis.fetch = async (url, options) => {
     assert.equal(url, "https://transmart.qq.com/api/imt");
     const texts = JSON.parse(options.body).source.text_list;
@@ -1127,18 +1132,16 @@ console.log(
     return new Response(
       JSON.stringify({
         header: { ret_code: "succ" },
-        auto_translation: texts.map((text) =>
-          text === "Reviewing local configuration"
-            ? "检查本地配置"
-            : "检查应用设置",
-        ),
+        auto_translation: texts.map((text) => translations.get(text)),
       }),
     );
   };
   app.set({
+    active: { fixture: "translation-turn" },
     items: [
       {
         id: "machine-translation",
+        turnId: "translation-turn",
         type: "reasoning",
         summary: [
           "Reviewing local configuration\nInspecting application settings",
@@ -1149,29 +1152,61 @@ console.log(
   await act(async () => {
     view = create(React.createElement(app.Conversation));
   });
-  await act(async () =>
-    view.root
-      .findByProps({ className: "process-history" })
-      .props.onToggle({ currentTarget: { open: true } }),
-  );
-  await act(async () => delay(1400));
-  assert.deepEqual(batches, [["Reviewing local configuration"]]);
-  assert(JSON.stringify(view.toJSON()).includes("检查本地配置"));
-  await act(async () =>
-    view.root
-      .findByProps({ className: "activity reasoning-summary" })
-      .props.onToggle({ currentTarget: { open: true } }),
-  );
+  const history = () => view.root.findByProps({ className: "process-history" });
+  const summary = () =>
+    view.root.findByProps({ className: "activity reasoning-summary" });
+  const visible = () => JSON.stringify(view.toJSON());
+  assert.equal(history().props.open, undefined);
+  assert.equal(summary().props.open, undefined);
   await act(async () => delay(1400));
   assert.deepEqual(batches, [
-    ["Reviewing local configuration"],
-    ["Inspecting application settings"],
+    ["Reviewing local configuration", "Inspecting application settings"],
   ]);
-  assert(JSON.stringify(view.toJSON()).includes("检查应用设置"));
+  assert(visible().includes("检查本地配置"));
+  assert(visible().includes("检查应用设置"));
+  assert(!visible().includes("正在翻译摘要"));
+
+  await act(async () =>
+    history().props.onToggle({ currentTarget: { open: true } }),
+  );
+  assert(visible().includes("检查应用设置"));
+  assert(!visible().includes("正在翻译摘要"));
+  await act(async () =>
+    history().props.onToggle({ currentTarget: { open: false } }),
+  );
+  await act(async () =>
+    app.set({
+      items: [
+        {
+          ...app.get().items[0],
+          summary: [
+            "Reviewing local configuration\nInspecting application settings and storage",
+          ],
+        },
+      ],
+    }),
+  );
+  assert.equal(summary().props.open, undefined);
+  await act(async () => delay(1400));
+  assert.deepEqual(batches, [
+    ["Reviewing local configuration", "Inspecting application settings"],
+    ["Inspecting application settings and storage"],
+  ]);
+  assert(visible().includes("检查应用设置与存储"));
+  await act(async () => app.set({ active: {} }));
+  await act(async () =>
+    history().props.onToggle({ currentTarget: { open: true } }),
+  );
+  assert(visible().includes("检查应用设置与存储"));
+  assert(!visible().includes("正在翻译摘要"));
+  await act(async () => delay(1400));
+  assert.equal(batches.length, 2);
   assert.equal(requests.length, requestCount);
   await act(async () => view.unmount());
   globalThis.fetch = originalFetch;
-  console.log("PASS 思考标题与正文按需调用机器翻译，翻译过程不发送 Codex 请求");
+  console.log(
+    "PASS 思考标题与折叠正文同批翻译、折叠时更新译文、预览与历史复用缓存，翻译过程不发送 Codex 请求",
+  );
 }
 app.set({ draft: "键盘发送验证", items: [] });
 await act(async () => {

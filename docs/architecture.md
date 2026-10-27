@@ -59,7 +59,7 @@ Node.js 网页桥接服务
 
 从“未分类”新建时，浏览器保存无项目选择，输入框和顶部目录入口显示“未分类”。首次发送通过 `lan/projectless/prepare` 在 `CODEX_HOME/codex-web/workspaces` 下创建独立的 `chat-XXXXXX` 工作目录，再以该 `cwd` 和 `threadSource: codex-web-projectless` 调用普通 `thread/start`。后端保存来源字段，`lan/state.projectlessRoot` 提供自动目录根；列表同时匹配来源与根下直接生成的目录，重载、归档恢复和新浏览器连接后均能恢复分类。目录分配失败保留草稿；对话创建失败时重试复用已分配目录。网页新建与桌面端识别共用项目归属优先规则，选择具体文件夹后按目录创建。桌面状态文件继续只读，网页工作目录独立管理。
 
-`summary-translator.js` 由浏览器直接通过 HTTPS 请求 TranSmart 的 `/api/imt` 普通机器翻译接口（`model_category: normal`），将英文摘要译为简体中文。代码、路径、链接和 Markdown 强调标记先替换为占位符，收到译文后原样恢复；占位符缺失或重复时按失败处理。请求超时为 10 秒，同批最多 24 条，重复原文共用请求，最近 300 条译文保存在浏览器 localStorage。`use-summary-translation.js` 在文本稳定 900 毫秒后发起翻译，标题随显示触发，正文随展开触发。翻译独立于 Codex 对话、账户和模型选择，失败时展示原文并提供重试入口。
+`summary-translator.js` 由浏览器直接通过 HTTPS 请求 TranSmart 的 `/api/imt` 普通机器翻译接口（`model_category: normal`），将英文摘要译为简体中文。代码、路径、链接和 Markdown 强调标记先替换为占位符，收到译文后原样恢复；占位符缺失或重复时按失败处理。请求超时为 10 秒，同批最多 24 条，重复原文共用请求，最近 300 条译文保存在浏览器 localStorage。摘要组件显示时，`use-summary-translation.js` 同时为标题和正文安排翻译，各自文本稳定 900 毫秒后进入同一批量队列；正文折叠时仍翻译，流式正文更新会继续准备新译文。展开正文以及切换实时预览与完整过程时复用缓存。翻译独立于 Codex 对话、账户和模型选择，失败时展示原文并提供重试入口。
 
 ## 桥接服务
 
