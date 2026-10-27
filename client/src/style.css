@@ -1514,7 +1514,7 @@ select option {
   bottom: calc(100% + 10px);
   left: 0;
   width: min(300px, calc(100vw - 48px));
-  padding: 16px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
@@ -1526,7 +1526,7 @@ select option {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 6px;
   font-size: 12px;
   font-weight: 500;
 }
@@ -1581,13 +1581,13 @@ select option {
 }
 .reasoning-effort-slider input[type="range"]:focus-visible {
   outline: 2px solid var(--muted);
-  outline-offset: 7px;
+  outline-offset: 3px;
 }
 .reasoning-effort-labels {
   display: flex;
   justify-content: space-between;
   gap: 5px;
-  margin-top: 14px;
+  margin-top: 2px;
   color: var(--muted);
   font-size: 11px;
 }
@@ -1596,10 +1596,10 @@ select option {
   font-weight: 600;
 }
 .reasoning-effort-hint {
-  margin: 12px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 .settings-body > .reasoning-effort-slider {
   margin-top: 22px;
