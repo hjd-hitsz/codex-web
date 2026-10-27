@@ -7,6 +7,7 @@ import { testMermaid } from "./mermaid.mjs";
 import { testMessageImages } from "./message-image.mjs";
 import { testThreadAccess } from "./thread-access.mjs";
 import { testThreadArchive } from "./thread-archive.mjs";
+import { testThreadNames } from "./thread-names.mjs";
 import { testAnnotations } from "./annotations.mjs";
 import {
   PROJECTLESS_SOURCE,
@@ -72,6 +73,11 @@ await testMermaid(app);
     await testThreadArchive(
       app,
       requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
+    await testThreadNames(
+      app,
       (respond) => (responseFor = respond),
       (method, params) => socket.emit(method, params),
     );

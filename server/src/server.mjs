@@ -5,6 +5,7 @@ import { gzipSync } from "node:zlib";
 import WebSocket, { WebSocketServer } from "ws";
 import { readConfig } from "./config.mjs";
 import { readVersion } from "./version.mjs";
+import { createThreadNaming, generateThreadName } from "./thread-names.mjs";
 import {
   prepareProjectlessDirectory,
   readProjectlessDirectories,
@@ -12,6 +13,16 @@ import {
 
 const config = readConfig();
 const version = readVersion();
+const threadNaming = createThreadNaming({
+  call: callUpstream,
+  generate: (params) =>
+    generateThreadName({
+      ...params,
+      url: config.upstreamUrl,
+      version: version.displayVersion,
+    }),
+  onError: (error) => console.error("Thread title:", error.message),
+});
 const clients = new WebSocketServer({ noServer: true });
 const pending = new Map();
 const questions = new Map();
@@ -155,6 +166,12 @@ function connect() {
     if (message.method) {
       if (message.id !== undefined) questions.set(String(message.id), message);
       const p = message.params || {};
+      if (
+        ["thread/name/updated", "thread/deleted", "thread/archived"].includes(
+          message.method,
+        )
+      )
+        threadNaming.cancel(p.threadId);
       if (message.method === "turn/started") {
         activeTurns.set(p.threadId, p.turn.id);
         activeThreads.add(p.threadId);
@@ -198,6 +215,8 @@ function connect() {
       }
       broadcast(message);
       releaseUnusedThreads();
+      if (message.method === "turn/completed")
+        threadNaming.schedule({ id: p.threadId });
       return;
     }
     const request = pending.get(message.id);
@@ -207,6 +226,7 @@ function connect() {
       if (request.resolve) {
         if (message.error) request.reject(new Error(message.error.message));
         else request.resolve(message.result);
+        releaseUnusedThreads();
         return;
       }
       if (
@@ -241,6 +261,15 @@ function connect() {
       if (!request.timedOut)
         send(request.client, { ...message, id: request.id });
       releaseUnusedThreads();
+      if (!message.error && !request.timedOut) {
+        if (request.method === "turn/start")
+          threadNaming.schedule(
+            { id: request.threadId },
+            { text: request.nameText, model: request.model },
+          );
+        else if (["thread/read", "thread/resume"].includes(request.method))
+          threadNaming.schedule(message.result?.thread);
+      }
     }
   });
   upstream.on("error", (error) =>
@@ -248,6 +277,7 @@ function connect() {
   );
   upstream.on("close", () => {
     ready = false;
+    threadNaming.clear();
     for (const request of pending.values()) {
       clearTimeout(request.timer);
       if (request.reject) request.reject(new Error("Codex 后端连接中断"));
@@ -379,6 +409,12 @@ clients.on("connection", (client) => {
       return;
     }
     if (message.method) {
+      if (
+        ["thread/name/set", "thread/delete", "thread/archive"].includes(
+          message.method,
+        )
+      )
+        threadNaming.cancel(threadId);
       if (message.method === "lan/projectless/prepare") {
         try {
           send(client, {
@@ -445,6 +481,13 @@ clients.on("connection", (client) => {
         processId,
         method: message.method,
         threadId,
+        ...(message.method === "turn/start" && {
+          nameText: (message.params?.input || [])
+            .filter((item) => item.type === "text")
+            .map((item) => item.text)
+            .join("\n"),
+          model: message.params?.model,
+        }),
       });
       if (threadId && loadedThreadMethods.has(message.method)) {
         try {

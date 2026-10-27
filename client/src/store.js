@@ -23,7 +23,7 @@ export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 export const basename = (path) =>
   path?.split("/").filter(Boolean).at(-1) || "本机";
-export const titleOf = (t) => t?.name || t?.preview || "新对话";
+export const titleOf = (t) => t?.name?.trim() || t?.preview || "新对话";
 export const b64decode = (text) =>
   new TextDecoder().decode(Uint8Array.from(atob(text), (c) => c.charCodeAt(0)));
 export const b64encode = (text) => {
@@ -135,6 +135,26 @@ let socket,
 let pendingForks = saved("cx-pending-forks", []);
 const deletedThreads = new Set();
 const turnRevisions = new Map();
+const threadNames = new Map();
+let nameRevision = 0;
+function preserveThreadName(thread, revision) {
+  const update = threadNames.get(thread.id);
+  return update?.revision > revision
+    ? { ...thread, name: update.name }
+    : thread;
+}
+function updateThreadName(threadId, name) {
+  threadNames.set(threadId, { name, revision: ++nameRevision });
+  set({
+    threads: state.threads.map((thread) =>
+      thread.id === threadId ? { ...thread, name } : thread,
+    ),
+    current:
+      state.current?.id === threadId
+        ? { ...state.current, name }
+        : state.current,
+  });
+}
 const threadOrdering = createThreadOrdering(rpc);
 let listing = 0;
 export const listThreads = (params) => threadOrdering.list(params);
@@ -296,6 +316,7 @@ async function boot() {
 }
 export async function loadThreads(more = false) {
   const epoch = ++listing;
+  const revision = nameRevision;
   const limit = Math.max(60, state.threads.length + (more ? 60 : 0));
   const [data, projectless] = await Promise.all([
     listThreads({
@@ -329,12 +350,13 @@ export async function loadThreads(more = false) {
     !threads.some((t) => t.id === state.current.id)
   )
     threads.unshift(state.current);
-  const sorted = await threadOrdering.hydrate(
+  const hydrated = await threadOrdering.hydrate(
     [...new Map(threads.map((t) => [t.id, t])).values()].filter(
       (thread) => !deletedThreads.has(thread.id),
     ),
   );
   if (epoch !== listing) return;
+  const sorted = hydrated.map((thread) => preserveThreadName(thread, revision));
   set({
     projectlessDirectories: projectless.directories,
     projectOrder: [
@@ -380,6 +402,7 @@ export function newChat(cwd = state.projectless ? "" : state.cwd) {
 }
 export async function openThread(id, { preserveServiceTier = false } = {}) {
   const epoch = ++opening;
+  const revision = nameRevision;
   set({
     loading: true,
     error: "",
@@ -390,11 +413,14 @@ export async function openThread(id, { preserveServiceTier = false } = {}) {
   try {
     const r = await rpc("thread/read", { threadId: id, includeTurns: false });
     if (epoch !== opening || deletedThreads.has(id)) return;
-    const [thread] = await threadOrdering.hydrate([r.thread]);
+    const [hydrated] = await threadOrdering.hydrate([r.thread]);
     if (epoch !== opening || deletedThreads.has(id)) return;
+    const thread = preserveThreadName(hydrated, revision);
     set({
       threads: state.threads.some((t) => t.id === id)
-        ? state.threads
+        ? state.threads.map((t) =>
+            t.id === id ? { ...t, name: thread.name } : t,
+          )
         : sortThreads([thread, ...state.threads]),
       current: thread,
       cwd: r.cwd || r.thread.cwd,
@@ -621,15 +647,7 @@ function handle({ method, params: p = {} }) {
     loadThreads().catch(() => {});
   }
   if (method === "thread/name/updated") {
-    set({
-      threads: state.threads.map((t) =>
-        t.id === p.threadId ? { ...t, name: p.threadName || p.name } : t,
-      ),
-      current:
-        state.current?.id === p.threadId
-          ? { ...state.current, name: p.threadName || p.name }
-          : state.current,
-    });
+    updateThreadName(p.threadId, p.threadName ?? p.name ?? null);
   }
   if (method === "thread/tokenUsage/updated")
     set({ tokenUsage: { ...state.tokenUsage, [p.threadId]: p.tokenUsage } });
@@ -797,12 +815,7 @@ export async function stop() {
 }
 export async function rename(thread, name) {
   await rpc("thread/name/set", { threadId: thread.id, name });
-  set({
-    current:
-      state.current?.id === thread.id
-        ? { ...state.current, name }
-        : state.current,
-  });
+  updateThreadName(thread.id, name);
   await loadThreads();
 }
 export async function archive(thread) {
@@ -843,6 +856,7 @@ function syncArchivedThread(id) {
 }
 function forgetThread(id) {
   threadOrdering.forget(id);
+  threadNames.delete(id);
   deletedThreads.add(id);
   pendingForks = pendingForks.filter((value) => value !== id);
   persist("cx-pending-forks", pendingForks);
