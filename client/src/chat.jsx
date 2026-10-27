@@ -35,6 +35,7 @@ import {
   useStore,
   get,
   set,
+  selectModel,
   setDraft,
   sendMessage,
   stop,
@@ -56,6 +57,7 @@ import { useSummaryTranslation } from "./use-summary-translation";
 import { conversationGroups } from "./conversation-groups";
 import { commandDescription } from "./command-description";
 import { UserInputForm } from "./user-input";
+import { ServiceTierSelect } from "./service-tier-select";
 
 function mathDelimiters(text) {
   return (text || "")
@@ -864,10 +866,7 @@ export function Composer() {
                 value={s.model}
                 onChange={(e) => {
                   const m = s.models.find((m) => m.model === e.target.value);
-                  set({
-                    model: e.target.value,
-                    effort: m?.defaultReasoningEffort || "",
-                  });
+                  selectModel(m);
                 }}
               >
                 {s.models.map((m) => (
@@ -893,6 +892,7 @@ export function Composer() {
               </select>
               <ChevronDown size={12} />
             </label>
+            <ServiceTierSelect />
             <IconButton
               icon={ListChecks}
               title="计划模式"

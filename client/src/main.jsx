@@ -37,6 +37,7 @@ import {
   useStore,
   get,
   set,
+  selectModel,
   rpc,
   newChat,
   openThread,
@@ -60,6 +61,7 @@ import {
   loadSkills,
 } from "./store";
 import { Conversation, Composer } from "./chat";
+import { ServiceTierSelect } from "./service-tier-select";
 import {
   IconButton,
   Empty,
@@ -688,9 +690,7 @@ function ModelDialog() {
           <button
             key={m.id}
             className={m.model === s.model ? "selected" : ""}
-            onClick={() =>
-              set({ model: m.model, effort: m.defaultReasoningEffort || "" })
-            }
+            onClick={() => selectModel(m)}
           >
             <span>
               <b>{m.displayName || m.model}</b>
@@ -713,6 +713,11 @@ function ModelDialog() {
           </button>
         ))}
       </div>
+      <h3>速度模式</h3>
+      <ServiceTierSelect />
+      <p className="section-description">
+        速度设置应用于下一轮任务，Fast 模式会增加用量。
+      </p>
       <div className="dialog-done">
         <button className="primary" onClick={() => set({ modal: null })}>
           完成

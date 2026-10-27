@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { fullAccessParams } from "./execution-policy";
+import { modelServiceTiers, resolveServiceTier } from "./service-tier";
 import {
   createThreadOrdering,
   sortThreads,
@@ -48,6 +49,7 @@ let state = {
   models: [],
   model: "",
   effort: "",
+  serviceTier: undefined,
   mode: "default",
   cwd: saved("cx-cwd", ""),
   defaultCwd: "",
@@ -86,6 +88,16 @@ export function set(patch) {
 }
 export function get() {
   return state;
+}
+export function selectModel(model) {
+  const tier = resolveServiceTier(state.serviceTier, model);
+  set({
+    model: model.model,
+    effort: model.defaultReasoningEffort || "",
+    serviceTier: modelServiceTiers(model).some((option) => option.id === tier)
+      ? tier
+      : null,
+  });
 }
 export function useStore() {
   return useSyncExternalStore(
@@ -234,11 +246,16 @@ async function boot() {
         models.data.find((m) => m.isDefault)?.model ||
         "",
       effort: state.effort || cfg.model_reasoning_effort || "",
+      serviceTier:
+        state.serviceTier === undefined
+          ? (cfg.service_tier ?? null)
+          : state.serviceTier,
       booting: false,
     });
     await loadThreads(false);
     const id = state.current?.id || localStorage.getItem("cx-current");
-    if (id) await openThread(id);
+    if (id)
+      await openThread(id, { preserveServiceTier: state.current?.id === id });
     else set({ draft: localStorage.getItem("cx-draft-new") || "" });
     rpc("account/rateLimits/read")
       .then((usage) => set({ usage }))
@@ -323,7 +340,7 @@ export function newChat(cwd = state.projectless ? "" : state.cwd) {
     sidebar: false,
   });
 }
-export async function openThread(id) {
+export async function openThread(id, { preserveServiceTier = false } = {}) {
   const epoch = ++opening;
   set({ loading: true, error: "", sidebar: false, attachments: [] });
   try {
@@ -346,6 +363,9 @@ export async function openThread(id) {
       projectlessCwd: null,
       model: r.model || state.model,
       effort: r.reasoningEffort || "",
+      serviceTier: preserveServiceTier
+        ? state.serviceTier
+        : (r.serviceTier ?? null),
       items: [],
       historyCursor: null,
       draft: localStorage.getItem("cx-draft-" + id) || "",
@@ -506,6 +526,8 @@ function handle({ method, params: p = {} }) {
   if (method === "turn/plan/updated")
     set({ plans: { ...state.plans, [p.threadId]: p } });
   if (p.threadId !== state.current?.id) return;
+  if (method === "thread/settings/updated")
+    set({ serviceTier: p.threadSettings.serviceTier ?? null });
   if (method === "error") report(p.error || p.message || "任务失败");
   if (method === "item/started" || method === "item/completed") {
     if (p.item.type === "userMessage")
@@ -540,7 +562,7 @@ function handle({ method, params: p = {} }) {
 export async function ensureThread() {
   if (state.current) return state.current;
   const epoch = opening;
-  const { projectless, model } = state;
+  const { projectless, model, serviceTier } = state;
   let cwd = state.cwd;
   if (projectless) {
     if (!state.projectlessCwd) {
@@ -558,6 +580,10 @@ export async function ensureThread() {
   const r = await rpc("thread/start", {
     cwd,
     model: model || undefined,
+    serviceTier: resolveServiceTier(
+      serviceTier,
+      state.models.find((m) => m.model === model),
+    ),
     ...(projectless ? { threadSource: PROJECTLESS_SOURCE } : {}),
   });
   if (epoch !== opening)
@@ -592,6 +618,10 @@ export async function sendMessage(
       input,
       model: state.model || undefined,
       effort: state.effort || undefined,
+      serviceTier: resolveServiceTier(
+        state.serviceTier,
+        state.models.find((m) => m.model === state.model),
+      ),
       collaborationMode: {
         mode: state.mode,
         settings: {

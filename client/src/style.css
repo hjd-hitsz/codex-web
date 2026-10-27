@@ -1115,6 +1115,7 @@ p {
 }
 .composer-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -1154,6 +1155,20 @@ select option {
 .effort-select select {
   max-width: 83px;
   color: var(--muted);
+}
+.service-tier-select {
+  flex-shrink: 0;
+  width: fit-content;
+}
+.service-tier-select select {
+  max-width: 110px;
+}
+.service-tier-select[data-accelerated="true"] {
+  background: var(--hover);
+}
+.service-tier-select[data-accelerated="true"] select,
+.service-tier-select[data-accelerated="true"] svg {
+  color: var(--green);
 }
 .composer-tools .icon-button {
   width: 28px;
