@@ -72,7 +72,7 @@ let state = {
   plans: {},
   busy: false,
   loading: false,
-  threadWarning: "",
+  threadAccess: null,
   error: "",
   notice: "",
   panel: null,
@@ -353,7 +353,7 @@ export function newChat(cwd = state.projectless ? "" : state.cwd) {
     attachments: [],
     error: "",
     loading: false,
-    threadWarning: "",
+    threadAccess: null,
     sidebar: false,
   });
 }
@@ -362,9 +362,9 @@ export async function openThread(id, { preserveServiceTier = false } = {}) {
   set({
     loading: true,
     error: "",
-    threadWarning: "",
+    threadAccess: { threadId: id, status: "loading" },
     sidebar: false,
-    attachments: [],
+    ...(state.current?.id !== id && { attachments: [] }),
   });
   try {
     const r = await rpc("thread/read", { threadId: id, includeTurns: false });
@@ -394,59 +394,81 @@ export async function openThread(id, { preserveServiceTier = false } = {}) {
     await loadHistory(false, epoch);
     if (epoch !== opening || deletedThreads.has(id)) return;
     set({ loading: false });
-    let resumed = false;
-    const turnRevision = turnRevisions.get(id);
-    const selection = {
-      model: state.model,
-      effort: state.effort,
-      serviceTier: state.serviceTier,
-    };
-    try {
-      const settings = await rpc("thread/resume", {
-        threadId: id,
-        excludeTurns: true,
-      });
-      if (epoch !== opening || deletedThreads.has(id)) return;
-      resumed = true;
-      set({
-        ...(state.model === selection.model && {
-          model: settings.model || state.model,
-        }),
-        ...(state.effort === selection.effort && {
-          effort: settings.reasoningEffort || "",
-        }),
-        ...(!preserveServiceTier &&
-          state.serviceTier === selection.serviceTier && {
-            serviceTier: settings.serviceTier ?? null,
-          }),
-      });
-    } catch (error) {
-      if (epoch !== opening || deletedThreads.has(id)) return;
-      if (turnRevisions.get(id) !== turnRevision) return;
-      set({
-        threadWarning: /already has an active writer/i.test(error.message)
-          ? "正在查看已保存的记录。另一端持有写入权，发送时会重新尝试连接。"
-          : "正在查看已保存的记录。恢复对话失败：" + error.message,
-      });
-    }
-    rpc("thread/turns/list", { threadId: id, limit: 20, itemsView: "summary" })
-      .then((page) => {
-        if (epoch === opening && state.current?.id === id) {
-          const active = { ...state.active };
-          const running = page.data.find((t) => t.status === "inProgress");
-          if (turnRevisions.get(id) === turnRevision) {
-            if (resumed && running) active[id] = running.id;
-            else delete active[id];
-          }
-          set({ turns: { ...state.turns, [id]: page.data }, active });
-        }
-      })
-      .catch(() => {});
+    await refreshThreadAccess({ preserveServiceTier });
   } catch (e) {
-    if (epoch === opening) report(e);
+    if (epoch === opening)
+      set({
+        threadAccess: { threadId: id, status: "loadError", message: e.message },
+      });
   } finally {
     if (epoch === opening) set({ loading: false });
   }
+}
+export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
+  if (state.loading || state.threadAccess?.status === "checking") return false;
+  if (state.threadAccess?.status === "loadError")
+    return openThread(state.threadAccess.threadId, { preserveServiceTier });
+  const id = state.current?.id;
+  if (!id) return false;
+  const epoch = opening;
+  const turnRevision = turnRevisions.get(id);
+  const selection = {
+    model: state.model,
+    effort: state.effort,
+    serviceTier: state.serviceTier,
+  };
+  const checking = { threadId: id, status: "checking" };
+  set({ threadAccess: checking, error: "" });
+  let resumed = false;
+  try {
+    const settings = await rpc("thread/resume", {
+      threadId: id,
+      excludeTurns: true,
+    });
+    if (epoch !== opening || state.threadAccess !== checking) return false;
+    resumed = true;
+    set({
+      threadAccess: { threadId: id, status: "ready" },
+      ...(state.model === selection.model && {
+        model: settings.model || state.model,
+      }),
+      ...(state.effort === selection.effort && {
+        effort: settings.reasoningEffort || "",
+      }),
+      ...(!preserveServiceTier &&
+        state.serviceTier === selection.serviceTier && {
+          serviceTier: settings.serviceTier ?? null,
+        }),
+    });
+  } catch (error) {
+    if (epoch !== opening || state.threadAccess !== checking) return false;
+    set({
+      threadAccess: {
+        threadId: id,
+        status:
+          turnRevisions.get(id) !== turnRevision
+            ? "ready"
+            : /already has an active writer/i.test(error.message)
+              ? "blocked"
+              : "error",
+        message: error.message,
+      },
+    });
+  }
+  const access = state.threadAccess;
+  rpc("thread/turns/list", { threadId: id, limit: 20, itemsView: "summary" })
+    .then((page) => {
+      if (epoch !== opening || state.threadAccess !== access) return;
+      const active = { ...state.active };
+      const running = page.data.find((t) => t.status === "inProgress");
+      if (turnRevisions.get(id) === turnRevision) {
+        if (resumed && running) active[id] = running.id;
+        else delete active[id];
+      }
+      set({ turns: { ...state.turns, [id]: page.data }, active });
+    })
+    .catch(() => {});
+  return access.status === "ready";
 }
 export async function loadHistory(older = false, epoch = opening) {
   if (!state.current) return;
@@ -660,10 +682,19 @@ export async function sendMessage(
   attachments = state.attachments,
   { clearDraft = true } = {},
 ) {
-  if ((!text.trim() && !attachments.length) || state.busy) return false;
+  if (
+    (!text.trim() && !attachments.length) ||
+    state.busy ||
+    state.loading ||
+    (state.threadAccess &&
+      state.threadAccess.threadId === state.current?.id &&
+      state.threadAccess.status !== "ready")
+  )
+    return false;
   set({ busy: true, error: "" });
+  let thread;
   try {
-    const thread = await ensureThread();
+    thread = await ensureThread();
     const input = [
       ...(text.trim() ? [{ type: "text", text, text_elements: [] }] : []),
       ...attachments.map((a) => a.input),
@@ -711,16 +742,19 @@ export async function sendMessage(
     }
     if (r.turn?.status === "inProgress")
       set({ active: { ...state.active, [thread.id]: r.turn.id } });
-    if (state.current?.id === thread.id) set({ threadWarning: "" });
+    if (state.current?.id === thread.id)
+      set({ threadAccess: { threadId: thread.id, status: "ready" } });
     loadThreads().catch(() => {});
     return true;
   } catch (e) {
     set({ items: state.items.filter((i) => !i.optimistic) });
-    report(
-      /already has an active writer/i.test(e.message)
-        ? "另一端仍持有此对话的写入权，历史记录可正常查看。草稿已保留，写入权释放后可直接重试发送。"
-        : e,
-    );
+    if (/already has an active writer/i.test(e.message)) {
+      if (state.current?.id === thread?.id)
+        set({
+          threadAccess: { threadId: thread.id, status: "blocked" },
+          error: "",
+        });
+    } else report(e);
     return false;
   } finally {
     set({ busy: false });

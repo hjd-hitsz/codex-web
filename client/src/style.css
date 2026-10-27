@@ -1265,6 +1265,48 @@ p {
 .composer:focus-within {
   border-color: color-mix(in srgb, var(--muted) 45%, var(--border));
 }
+.composer-access {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--subtle);
+}
+.composer-access > svg {
+  color: var(--muted);
+  align-self: start;
+}
+.composer-access-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.composer-access strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.composer-access p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.composer-access small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+@media (max-width: 540px) {
+  .composer-access {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .composer-access > button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
 .composer textarea {
   display: block;
   border: 0;

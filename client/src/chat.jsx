@@ -30,6 +30,7 @@ import {
   MessageSquare,
   CheckCircle2,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   useStore,
@@ -38,6 +39,7 @@ import {
   selectModel,
   setDraft,
   sendMessage,
+  refreshThreadAccess,
   stop,
   report,
   copy,
@@ -638,7 +640,6 @@ export function Conversation() {
         }}
       >
         <div className="message-column">
-          {s.threadWarning && <p role="status">{s.threadWarning}</p>}
           {s.historyCursor && (
             <button
               className="load-older"
@@ -734,7 +735,7 @@ export function Composer() {
       area.current.style.height =
         Math.min(area.current.scrollHeight, 180) + "px";
     }
-  }, [s.draft]);
+  }, [s.draft, s.threadAccess?.status]);
   async function add(files) {
     for (const file of files)
       try {
@@ -746,160 +747,210 @@ export function Composer() {
   const token = s.tokenUsage[s.current?.id];
   const usage = token?.last?.totalTokens;
   const windowSize = token?.modelContextWindow;
+  const access = s.threadAccess;
+  const unavailable = s.loading || (access && access.status !== "ready");
+  const checking = s.loading || access?.status === "checking";
   return (
     <div className="composer-wrap">
-      {shortcuts.popup}
-      <div
-        className="composer"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          add(e.dataTransfer.files);
-        }}
-      >
-        {s.attachments.length > 0 && (
-          <div className="attachment-list">
-            {s.attachments.map((a) => (
-              <div className="attachment" key={a.id}>
-                {a.preview ? <img src={a.preview} /> : <Paperclip size={17} />}
-                <span>{a.name}</span>
-                <IconButton
-                  icon={X}
-                  title={"移除 " + a.name}
-                  onClick={() =>
-                    set({
-                      attachments: s.attachments.filter((x) => x.id !== a.id),
-                    })
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        <textarea
-          ref={area}
-          aria-label="消息"
-          aria-autocomplete="list"
-          aria-expanded={shortcuts.open}
-          aria-activedescendant={
-            shortcuts.open ? shortcuts.activeId : undefined
-          }
-          placeholder={
-            active
-              ? "补充说明，或等待 Codex 完成…"
-              : "描述任务，@ 引用文件，/ 使用命令…"
-          }
-          value={s.draft}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            shortcuts.detect(e.target.value, e.target.selectionStart);
-          }}
-          onClick={(e) =>
-            shortcuts.detect(e.target.value, e.target.selectionStart)
-          }
-          onKeyUp={(e) => {
-            if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key))
-              shortcuts.detect(e.target.value, e.target.selectionStart);
-          }}
-          onPaste={(e) => {
-            const images = [...e.clipboardData.files].filter((f) =>
-              f.type.startsWith("image/"),
-            );
-            if (images.length) {
-              e.preventDefault();
-              add(images);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (shortcuts.keydown(e)) return;
-            if (
-              e.key === "Enter" &&
-              e.ctrlKey &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              sendMessage();
-            }
-          }}
-        />
-        <div className="composer-toolbar">
-          <div className="composer-tools">
-            <input
-              type="file"
-              ref={files}
-              multiple
-              hidden
-              onChange={(e) => {
-                add(e.target.files);
-                e.target.value = "";
-              }}
-            />
-            <IconButton
-              icon={Plus}
-              title="添加图片或文本附件"
-              onClick={() => files.current.click()}
-            />
-            <label className="select-control model-select">
-              <select
-                aria-label="模型"
-                value={s.model}
-                onChange={(e) => {
-                  const m = s.models.find((m) => m.model === e.target.value);
-                  selectModel(m);
-                }}
-              >
-                {s.models.map((m) => (
-                  <option key={m.id} value={m.model}>
-                    {m.displayName || m.model}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={12} />
-            </label>
-            <ReasoningEffortControl />
-            <ServiceTierToggle />
-            <IconButton
-              icon={ListChecks}
-              title="计划模式"
-              active={s.mode === "plan"}
-              onClick={() =>
-                set({ mode: s.mode === "plan" ? "default" : "plan" })
-              }
-            />
-          </div>
-          <div className="send-controls">
-            {s.mode === "plan" && <span className="mode-badge">计划</span>}
-            {active && (
-              <button
-                className="stop-button"
-                aria-label="停止任务"
-                title="停止任务"
-                onClick={() => stop().catch(report)}
-              >
-                <Square size={13} fill="currentColor" />
-              </button>
+      {!unavailable && shortcuts.popup}
+      {unavailable ? (
+        <div
+          className="composer-access"
+          role="status"
+          aria-live="polite"
+          aria-busy={checking}
+        >
+          {checking ? (
+            <LoaderCircle size={20} className="spin" />
+          ) : (
+            <AlertCircle size={20} />
+          )}
+          <div className="composer-access-content">
+            <strong>
+              {checking
+                ? "正在检查对话状态…"
+                : access?.status === "blocked"
+                  ? "此对话由另一端使用"
+                  : "暂时无法连接此对话"}
+            </strong>
+            <p>
+              {checking
+                ? "正在确认是否可以继续发送，历史记录仍可查看。"
+                : access?.status === "blocked"
+                  ? "历史记录可正常查看。点击“重试”刷新状态，恢复后即可继续发送。"
+                  : access?.message}
+            </p>
+            {(s.draft || s.attachments.length > 0) && (
+              <small>草稿和附件已保留。</small>
             )}
-            <button
-              className="send-button"
-              aria-label="发送消息"
-              title="发送消息"
-              disabled={
-                !s.connected ||
-                s.busy ||
-                (!s.draft.trim() && !s.attachments.length)
+          </div>
+          <button
+            className="secondary"
+            aria-label="重试连接对话"
+            disabled={!s.connected || checking}
+            onClick={() => refreshThreadAccess()}
+          >
+            <RefreshCw size={14} />
+            {checking ? "正在检查…" : "重试"}
+          </button>
+        </div>
+      ) : (
+        <div
+          className="composer"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            add(e.dataTransfer.files);
+          }}
+        >
+          {s.attachments.length > 0 && (
+            <div className="attachment-list">
+              {s.attachments.map((a) => (
+                <div className="attachment" key={a.id}>
+                  {a.preview ? (
+                    <img src={a.preview} />
+                  ) : (
+                    <Paperclip size={17} />
+                  )}
+                  <span>{a.name}</span>
+                  <IconButton
+                    icon={X}
+                    title={"移除 " + a.name}
+                    onClick={() =>
+                      set({
+                        attachments: s.attachments.filter((x) => x.id !== a.id),
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={area}
+            aria-label="消息"
+            aria-autocomplete="list"
+            aria-expanded={shortcuts.open}
+            aria-activedescendant={
+              shortcuts.open ? shortcuts.activeId : undefined
+            }
+            placeholder={
+              active
+                ? "补充说明，或等待 Codex 完成…"
+                : "描述任务，@ 引用文件，/ 使用命令…"
+            }
+            value={s.draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              shortcuts.detect(e.target.value, e.target.selectionStart);
+            }}
+            onClick={(e) =>
+              shortcuts.detect(e.target.value, e.target.selectionStart)
+            }
+            onKeyUp={(e) => {
+              if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key))
+                shortcuts.detect(e.target.value, e.target.selectionStart);
+            }}
+            onPaste={(e) => {
+              const images = [...e.clipboardData.files].filter((f) =>
+                f.type.startsWith("image/"),
+              );
+              if (images.length) {
+                e.preventDefault();
+                add(images);
               }
-              onClick={() => sendMessage()}
-            >
-              {s.busy ? (
-                <LoaderCircle size={18} className="spin" />
-              ) : (
-                <ArrowUp size={19} />
+            }}
+            onKeyDown={(e) => {
+              if (shortcuts.keydown(e)) return;
+              if (
+                e.key === "Enter" &&
+                e.ctrlKey &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+          />
+          <div className="composer-toolbar">
+            <div className="composer-tools">
+              <input
+                type="file"
+                ref={files}
+                multiple
+                hidden
+                onChange={(e) => {
+                  add(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <IconButton
+                icon={Plus}
+                title="添加图片或文本附件"
+                onClick={() => files.current.click()}
+              />
+              <label className="select-control model-select">
+                <select
+                  aria-label="模型"
+                  value={s.model}
+                  onChange={(e) => {
+                    const m = s.models.find((m) => m.model === e.target.value);
+                    selectModel(m);
+                  }}
+                >
+                  {s.models.map((m) => (
+                    <option key={m.id} value={m.model}>
+                      {m.displayName || m.model}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={12} />
+              </label>
+              <ReasoningEffortControl />
+              <ServiceTierToggle />
+              <IconButton
+                icon={ListChecks}
+                title="计划模式"
+                active={s.mode === "plan"}
+                onClick={() =>
+                  set({ mode: s.mode === "plan" ? "default" : "plan" })
+                }
+              />
+            </div>
+            <div className="send-controls">
+              {s.mode === "plan" && <span className="mode-badge">计划</span>}
+              {active && (
+                <button
+                  className="stop-button"
+                  aria-label="停止任务"
+                  title="停止任务"
+                  onClick={() => stop().catch(report)}
+                >
+                  <Square size={13} fill="currentColor" />
+                </button>
               )}
-            </button>
+              <button
+                className="send-button"
+                aria-label="发送消息"
+                title="发送消息"
+                disabled={
+                  !s.connected ||
+                  s.busy ||
+                  (!s.draft.trim() && !s.attachments.length)
+                }
+                onClick={() => sendMessage()}
+              >
+                {s.busy ? (
+                  <LoaderCircle size={18} className="spin" />
+                ) : (
+                  <ArrowUp size={19} />
+                )}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div className="composer-meta">
         <button
           title={s.projectless ? "未指定项目；可选择文件夹" : s.cwd}
@@ -917,6 +968,8 @@ export function Composer() {
               {windowSize > 0 &&
                 `（${Math.round((usage / windowSize) * 100)}%）`}
             </>
+          ) : unavailable ? (
+            "历史记录可查看"
           ) : (
             "Ctrl + Enter 发送"
           )}

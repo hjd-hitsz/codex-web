@@ -8,10 +8,24 @@ export async function testThreadAccess(app, requests, setResponse, emit) {
   const conflict = { message: "thread fixture already has an active writer" };
   let finishResume;
   let locked = true;
+  let readFails = false;
+  let persistedInProgress = true;
   let view;
   const start = requests.length;
+  const turnsSent = () =>
+    requests
+      .slice(start)
+      .filter((request) =>
+        ["turn/start", "turn/steer"].includes(request.method),
+      ).length;
+  const retryButton = () =>
+    view.root.findByProps({ "aria-label": "重试连接对话" });
+  const inputs = () => view.root.findAllByProps({ "aria-label": "消息" });
+  const savedDraft = localStorage.getItem("cx-draft-new");
   setResponse(({ method }) => {
-    if (method === "thread/read") return { thread };
+    if (method === "lan/projectless/read") return { directories: {} };
+    if (method === "thread/read")
+      return readFails ? { error: { message: "历史读取失败" } } : { thread };
     if (method === "thread/resume")
       return new Promise((resolve) => (finishResume = resolve));
     if (method === "thread/items/list")
@@ -29,7 +43,11 @@ export async function testThreadAccess(app, requests, setResponse, emit) {
         nextCursor: null,
       };
     if (method === "thread/turns/list")
-      return { data: [{ id: "other-turn", status: "inProgress" }] };
+      return {
+        data: persistedInProgress
+          ? [{ id: "other-turn", status: "inProgress" }]
+          : [],
+      };
     if (method === "turn/start")
       return locked
         ? { error: conflict }
@@ -44,17 +62,27 @@ export async function testThreadAccess(app, requests, setResponse, emit) {
     let opened;
     await act(async () => {
       opened = app.openThread(thread.id);
-      view = create(React.createElement(app.Conversation));
+      view = create(
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(app.Conversation),
+          React.createElement(app.Composer),
+        ),
+      );
     });
     assert(finishResume);
     assert.equal(app.get().loading, false);
     assert.equal(app.get().current.id, thread.id);
     assert.equal(app.get().draft, "保留待发送内容");
     assert(JSON.stringify(view.toJSON()).includes("已经保存的回答"));
-    assert.deepEqual(
-      requests.slice(start, start + 1).map((request) => request.method),
-      ["thread/read"],
-    );
+    assert(JSON.stringify(view.toJSON()).includes("正在检查对话状态"));
+    assert.equal(inputs().length, 0);
+    assert.equal(retryButton().props.disabled, true);
+    assert.equal(await app.sendMessage(), false);
+    assert.equal(turnsSent(), 0);
+    assert.equal(requests[start].method, "thread/read");
+
     await act(async () => {
       finishResume({ error: conflict });
       await opened;
@@ -62,40 +90,92 @@ export async function testThreadAccess(app, requests, setResponse, emit) {
     assert.equal(app.get().error, "");
     assert.equal(app.get().active[thread.id], undefined);
     assert.equal(app.get().serviceTier, null);
-    assert(JSON.stringify(view.toJSON()).includes("另一端持有写入权"));
-    assert(JSON.stringify(view.toJSON()).includes("已经保存的回答"));
+    assert(JSON.stringify(view.toJSON()).includes("此对话由另一端使用"));
+    assert(!JSON.stringify(view.toJSON()).includes("正在查看已保存的记录"));
+    assert.equal(inputs().length, 0);
+    assert.equal(retryButton().props.disabled, false);
+    assert.equal(await app.sendMessage(), false);
+    assert.equal(turnsSent(), 0);
+
     const attachments = [
       {
         id: "fixture-image",
+        name: "fixture.png",
         input: { type: "image", url: "data:image/png;base64,AQ==" },
       },
     ];
     await act(async () => app.set({ attachments }));
+    let retried;
+    const resumeCount = requests.filter(
+      (request) => request.method === "thread/resume",
+    ).length;
+    await act(async () => {
+      retried = retryButton().props.onClick();
+    });
+    assert.equal(retryButton().props.disabled, true);
+    assert.equal(await app.refreshThreadAccess(), false);
+    assert.equal(
+      requests.filter((request) => request.method === "thread/resume").length,
+      resumeCount + 1,
+    );
+    await act(async () => {
+      finishResume({ error: conflict });
+      await retried;
+    });
+    assert.equal(inputs().length, 0);
+    assert.equal(app.get().draft, "保留待发送内容");
+    assert.deepEqual(app.get().attachments, attachments);
+    assert.equal(app.get().error, "");
+
+    await act(async () => {
+      retried = retryButton().props.onClick();
+    });
+    await act(async () => {
+      finishResume({ error: { message: "模拟网络错误" } });
+      await retried;
+    });
+    assert(JSON.stringify(view.toJSON()).includes("模拟网络错误"));
+    assert.equal(inputs().length, 0);
+    assert.equal(retryButton().props.disabled, false);
+    await act(async () => {
+      retried = retryButton().props.onClick();
+    });
+    await act(async () => {
+      persistedInProgress = false;
+      finishResume({ thread });
+      await retried;
+    });
+    assert.equal(inputs().length, 1);
+    assert.equal(inputs()[0].props.value, "保留待发送内容");
+    assert.deepEqual(app.get().attachments, attachments);
+    assert.equal(turnsSent(), 0);
+
+    // 检查成功后，另一端仍可能在用户发送前取得写入权。
     await act(async () => assert.equal(await app.sendMessage(), false));
-    assert(app.get().error.includes("草稿已保留"));
+    assert.equal(turnsSent(), 1);
+    assert.equal(inputs().length, 0);
+    assert.equal(app.get().error, "");
     assert.equal(app.get().draft, "保留待发送内容");
     assert.equal(
       localStorage.getItem("cx-draft-" + thread.id),
       "保留待发送内容",
     );
-    assert.equal(app.get().items.filter((item) => item.optimistic).length, 0);
     assert.deepEqual(app.get().attachments, attachments);
-    assert.equal(
-      requests.slice(start).filter((request) => request.method === "turn/steer")
-        .length,
-      0,
-    );
+    assert.equal(app.get().items.filter((item) => item.optimistic).length, 0);
     locked = false;
+    await act(async () => {
+      retried = retryButton().props.onClick();
+    });
+    await act(async () => {
+      finishResume({ thread });
+      await retried;
+    });
+    assert.equal(turnsSent(), 1);
     await act(async () => assert.equal(await app.sendMessage(), true));
-    assert.equal(app.get().threadWarning, "");
     assert.equal(app.get().draft, "");
     assert.deepEqual(app.get().attachments, []);
     assert.equal(app.get().active[thread.id], "web-turn");
-    assert.equal(
-      requests.slice(start).filter((request) => request.method === "turn/start")
-        .length,
-      2,
-    );
+    assert.equal(turnsSent(), 2);
 
     let refreshed;
     await act(async () => {
@@ -131,11 +211,25 @@ export async function testThreadAccess(app, requests, setResponse, emit) {
       await refreshed;
     });
     assert.equal(app.get().active[thread.id], "new-live-turn");
-    assert.equal(app.get().threadWarning, "");
+    assert.equal(inputs().length, 1);
+
+    readFails = true;
+    await act(async () => app.openThread(thread.id));
+    assert(JSON.stringify(view.toJSON()).includes("历史读取失败"));
+    assert.equal(inputs().length, 0);
+    readFails = false;
+    await act(async () => {
+      retried = retryButton().props.onClick();
+    });
+    await act(async () => {
+      finishResume({ thread });
+      await retried;
+    });
+    assert.equal(inputs().length, 1);
 
     let stale;
     await act(async () => {
-      stale = app.openThread(thread.id);
+      stale = app.refreshThreadAccess();
     });
     await act(async () => {
       app.newChat("/other");
@@ -144,10 +238,11 @@ export async function testThreadAccess(app, requests, setResponse, emit) {
       await stale;
     });
     assert.equal(app.get().current, null);
-    assert.equal(app.get().threadWarning, "");
+    assert.equal(app.get().threadAccess, null);
     assert.equal(app.get().draft, "新对话草稿");
+    assert.equal(inputs().length, 1);
     console.log(
-      "PASS 写入占用期间先显示历史、保留草稿、发送重试与迟到响应隔离",
+      "PASS 进入对话即检查所有权、占用区替代发送框、重试及防重复、草稿附件保留与迟到响应隔离",
     );
   } finally {
     await act(async () => {
@@ -156,5 +251,7 @@ export async function testThreadAccess(app, requests, setResponse, emit) {
       app.set(original);
     });
     localStorage.removeItem("cx-draft-" + thread.id);
+    if (savedDraft === null) localStorage.removeItem("cx-draft-new");
+    else localStorage.setItem("cx-draft-new", savedDraft);
   }
 }
