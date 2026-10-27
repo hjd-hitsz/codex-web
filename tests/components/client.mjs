@@ -7,6 +7,7 @@ import { testMermaid } from "./mermaid.mjs";
 import { testMessageImages } from "./message-image.mjs";
 import { testThreadAccess } from "./thread-access.mjs";
 import { testThreadArchive } from "./thread-archive.mjs";
+import { testAnnotations } from "./annotations.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -79,6 +80,7 @@ await testMermaid(app);
       requests,
       (respond) => (responseFor = respond),
     );
+    await testAnnotations(app, requests, (respond) => (responseFor = respond));
   } finally {
     responseFor = previousResponse;
   }

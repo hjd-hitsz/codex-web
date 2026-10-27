@@ -758,6 +758,126 @@ p {
   width: 14px;
   height: 14px;
 }
+.annotation-add,
+.annotation-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.annotation-add {
+  padding: 8px 12px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.annotation-marker {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bubble);
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+.annotation-reference {
+  position: relative;
+}
+.annotation-note {
+  display: block;
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--subtle);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.annotation-note > span,
+.annotation-note > strong {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.annotation-note > strong {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+.annotation-card,
+.annotation-editor {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--subtle);
+  min-width: 0;
+}
+.annotation-card summary {
+  cursor: pointer;
+  color: var(--link);
+}
+.annotation-card summary svg {
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.annotation-card blockquote,
+.annotation-editor blockquote {
+  margin: 8px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--border);
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.annotation-card p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+}
+.annotation-editor-heading,
+.annotation-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.annotation-editor-heading button {
+  display: flex;
+  padding: 4px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+.annotation-editor textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 75px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.annotation-editor-actions {
+  margin-top: 8px;
+}
+.annotation-editor-actions small {
+  color: var(--muted);
+}
+.annotation-editor [role="alert"] {
+  color: var(--red);
+}
 .assistant-message {
   padding: 2px 0 0;
 }

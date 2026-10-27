@@ -21,6 +21,10 @@ Node.js 网页桥接服务
 
 `chat.jsx` 的 `RichText` 使用 React Markdown 渲染 GFM、数学公式与代码高亮，将 `mermaid` 代码块交给 `mermaid-block.jsx`。图表源码稳定 250 毫秒后按需加载 Mermaid，`mermaid-renderer.js` 串行配置主题并绘制 SVG，使用 `securityLevel: strict` 和 `suppressErrorRendering: true`，临时绘制节点在成功或失败后清理。图表跟随网页及系统的深浅主题；源码或主题变化时忽略旧请求的迟到结果。绘制期间和解析失败时保留源码，成功后提供图表与源码切换及源码复制。渲染器和各图表模块随网页打包，通过本站加载。
 
+`annotations.js` 解析桌面端的 `# Response annotations:` 前缀和 `<response-annotations>` JSON 数组，每项保留 `text`、可选的 `annotation` 与 `source`。`annotationContexts` 按轮次和前置用户消息为助手回复关联批注，普通补充消息清除后续回复的旧批注上下文；未加载原始用户消息时，编号引用提示加载相关历史。Markdown 插件只将普通文字中的 `:codex-annotation{index="N"}` 转成行内编号，代码、公式和链接保持各自解析规则。`message-annotations.jsx` 展示历史批注卡片及可展开的行内引用，通过稳定的组件与 React Context 保持流式更新期间的展开状态。
+
+批注入口仅随有效文字选区显示，选择助手回复文字后可通过选区旁的浮动按钮添加批注。监听 `selectionchange` 以支持触屏选区调整，滚动时跟随选区更新按钮位置，并在卸载时清理监听。选区通过浏览器 Range 记录原文及 `source.messageId`、`startOffset`、`endOffset`；偏移量以渲染后文字的 UTF-16 位置计算。批注编辑内容保存在 `cx-annotation-<threadId>-<messageId>`，由共享订阅同步重新挂载的编辑器；取消时清理，发送成功仅清理仍与提交内容一致的草稿，保留等待期间切回对话后继续编辑的内容。重载与重新打开消息时恢复草稿。发送使用兼容桌面端的文本格式，JSON 中的尖括号转义以保护分隔符，并通过 `sendMessage` 的 `clearDraft: false` 保留主输入框草稿和附件；运行中走 `turn/steer`，空闲时走 `turn/start`，写入检查、失败重试和错误显示沿用现有流程。`client/tests/annotations.test.js` 和 `tests/components/annotations.mjs` 使用构造数据与模拟后端验证格式、上下文隔离、行内引用、选区位置、发送和草稿恢复。
+
 `message-image.jsx` 处理 Markdown 图片和历史 `localImage` 附件。`image-source.js` 将绝对路径、`file:`、`sandbox:` 以及相对工作目录的图片引用解析为本机路径；组件通过已有的 `fs/readFile` RPC 读取 Base64 数据，并按图片类型构造 Data URL。相对路径优先使用当前对话的 `cwd`，随后使用已选目录或默认目录。加载失败或浏览器解码失败时显示提示和重试按钮，断线后随重连重读，路径切换及卸载后忽略迟到响应。HTTP、HTTPS 与协议相对地址直接交给浏览器；Markdown URL 过滤仅对图片放行本地 URI 和指定类型的 Base64 图片，其余沿用 React Markdown 的默认规则。
 
 消息图片统一放在原生按钮中，以最大 320 × 240 像素的等比缩略图显示。点击后由 `image-viewer.jsx` 通过 React Portal 将原生 `dialog` 挂到页面根部，使用 `showModal()` 管理模态焦点和背景交互。大图默认适应窗口，支持点击图片或工具栏切换到可滚动的原始尺寸；关闭按钮、Esc 和空白区域均可关闭，关闭后将焦点还给仍在页面中的缩略图。图片地址变化时关闭旧预览，流式正文更新保持当前预览；图片按钮拦截外层链接的默认跳转。

@@ -65,6 +65,13 @@ import { MermaidBlock } from "./mermaid-block";
 import { MessageImage } from "./message-image";
 import { MessageLink } from "./message-link";
 import { messageUrlTransform } from "./image-source";
+import { annotationContexts, remarkAnnotations } from "./annotations";
+import {
+  AnnotationReference,
+  AnnotationContext,
+  AnnotatedUserText,
+  MessageAnnotations,
+} from "./message-annotations";
 
 function mathDelimiters(text) {
   return (text || "")
@@ -83,24 +90,27 @@ function mathDelimiters(text) {
     )
     .join("");
 }
-export function RichText({ text }) {
+export function RichText({ text, annotations = [] }) {
   return (
     <div className="markdown">
-      <Markdown
-        urlTransform={messageUrlTransform}
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[
-          rehypeKatex,
-          [rehypeHighlight, { plainText: ["mermaid"] }],
-        ]}
-        components={{
-          a: MessageLink,
-          pre: CodeBlock,
-          img: MessageImage,
-        }}
-      >
-        {mathDelimiters(text)}
-      </Markdown>
+      <AnnotationContext.Provider value={annotations}>
+        <Markdown
+          urlTransform={messageUrlTransform}
+          remarkPlugins={[remarkGfm, remarkMath, remarkAnnotations]}
+          rehypePlugins={[
+            rehypeKatex,
+            [rehypeHighlight, { plainText: ["mermaid"] }],
+          ]}
+          components={{
+            a: MessageLink,
+            pre: CodeBlock,
+            img: MessageImage,
+            "annotation-ref": AnnotationReference,
+          }}
+        >
+          {mathDelimiters(text)}
+        </Markdown>
+      </AnnotationContext.Provider>
     </div>
   );
 }
@@ -128,9 +138,7 @@ function Content({ content }) {
     <>
       {(content || []).map((c, i) =>
         c.type === "text" ? (
-          <div key={i} className="user-text">
-            {c.text}
-          </div>
+          <AnnotatedUserText key={i} text={c.text} />
         ) : c.type === "image" || c.type === "localImage" ? (
           <div key={i} className="message-image">
             {c.url || c.path ? (
@@ -315,19 +323,25 @@ function ReasoningPart({ title, body }) {
     </>
   );
 }
-function Message({ item, showActions }) {
+function Message({ item, showActions, annotations }) {
   if (item.type === "reasoning") return <Reasoning item={item} />;
   if (item.type === "agentMessage" && item.questions?.length)
     return (
       <article className="message assistant-message">
-        {item.text?.trim() && <RichText text={item.text} />}
+        {item.text?.trim() && (
+          <MessageAnnotations item={item}>
+            <RichText text={item.text} annotations={annotations} />
+          </MessageAnnotations>
+        )}
         <AsyncQuestion item={item} />
       </article>
     );
   if (item.type === "agentMessage" && item.phase === "commentary")
     return item.text?.trim() ? (
       <article className="message process-message">
-        <RichText text={item.text} />
+        <MessageAnnotations item={item}>
+          <RichText text={item.text} annotations={annotations} />
+        </MessageAnnotations>
       </article>
     ) : null;
   if (item.type === "userMessage")
@@ -368,7 +382,9 @@ function Message({ item, showActions }) {
   if (item.type === "agentMessage")
     return (
       <article className="message assistant-message">
-        <RichText text={item.text} />
+        <MessageAnnotations item={item}>
+          <RichText text={item.text} annotations={annotations} />
+        </MessageAnnotations>
         {showActions && (
           <div className="message-actions">
             <IconButton
@@ -525,7 +541,7 @@ function Question({ request }) {
     </div>
   );
 }
-function ProcessGroup({ group, working }) {
+function ProcessGroup({ group, working, annotations }) {
   const [open, setOpen] = useState(false);
   const latest = group.items.at(-1);
   const summary =
@@ -551,7 +567,12 @@ function ProcessGroup({ group, working }) {
         {open && (
           <div className="process-content">
             {group.items.map((item) => (
-              <Message key={item.id} item={item} showActions={false} />
+              <Message
+                key={item.id}
+                item={item}
+                showActions={false}
+                annotations={annotations.get(item.id)}
+              />
             ))}
           </div>
         )}
@@ -561,7 +582,12 @@ function ProcessGroup({ group, working }) {
           {summary ? (
             <ReasoningPart key={latest.id} {...summary} />
           ) : (
-            <Message key={latest.id} item={latest} showActions={false} />
+            <Message
+              key={latest.id}
+              item={latest}
+              showActions={false}
+              annotations={annotations.get(latest.id)}
+            />
           )}
         </div>
       )}
@@ -574,6 +600,7 @@ export function Conversation() {
     bottom = useRef(),
     follow = useRef(true);
   const [below, setBelow] = useState(false);
+  const annotations = annotationContexts(s.items);
   const active = s.active[s.current?.id],
     plan = s.plans[s.current?.id];
   const actions = actionableMessages(
@@ -657,14 +684,16 @@ export function Conversation() {
             conversationGroups(s.items).map((group) =>
               group.type === "process" ? (
                 <ProcessGroup
-                  key={group.id}
+                  key={`${s.current?.id}:${group.id}`}
                   group={group}
+                  annotations={annotations}
                   working={!!active && active === group.turnId}
                 />
               ) : (
                 <Message
-                  key={group.id}
+                  key={`${s.current?.id}:${group.id}`}
                   item={group.item}
+                  annotations={annotations.get(group.item.id)}
                   showActions={actions.has(group.id)}
                 />
               ),
