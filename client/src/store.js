@@ -3,6 +3,7 @@ import { fullAccessParams } from "./execution-policy";
 import { modelServiceTiers, resolveServiceTier } from "./service-tier";
 import {
   createThreadOrdering,
+  projectGroups,
   sortThreads,
   threadGroupPath,
   PROJECTLESS_SOURCE,
@@ -57,6 +58,7 @@ let state = {
   projectlessCwd: null,
   projectlessRoot: "",
   projects: saved("cx-projects", []),
+  projectOrder: null,
   projectlessDirectories: {},
   pins: saved("cx-pins", []),
   theme: saved("cx-theme", "system"),
@@ -312,6 +314,18 @@ export async function loadThreads(more = false) {
   if (epoch !== listing) return;
   set({
     projectlessDirectories: projectless.directories,
+    projectOrder: [
+      ...projectGroups(
+        sorted,
+        state.projects,
+        state.pins,
+        projectless.directories,
+        state.projectlessRoot,
+      )
+        .map(([path]) => path)
+        .filter((path) => !state.projectOrder?.includes(path)),
+      ...(state.projectOrder || []),
+    ],
     threads: sorted.filter((t) => !deletedThreads.has(t.id)).slice(0, limit),
     threadCursor: sorted.length > limit ? String(limit) : null,
     current: state.current
@@ -766,7 +780,15 @@ export function pin(id) {
 export function addProject(path) {
   if (!state.projects.includes(path)) {
     const projects = [...state.projects, path];
-    set({ projects });
+    set({
+      projects,
+      ...(state.projectOrder && {
+        projectOrder: [
+          path,
+          ...state.projectOrder.filter((value) => value !== path),
+        ],
+      }),
+    });
     persist("cx-projects", projects);
   }
   newChat(path);

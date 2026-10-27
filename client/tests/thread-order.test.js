@@ -9,7 +9,7 @@ import {
   PROJECTLESS_SOURCE,
 } from "../src/thread-order.js";
 
-test("完成时间决定对话和项目顺序，打开时间、项目添加顺序与置顶不干扰项目排序", () => {
+test("完成时间决定对话和项目初始顺序，打开时间、项目添加顺序与置顶不干扰初始排序", () => {
   const threads = [
     { id: "opened", cwd: "/a", createdAt: 1, updatedAt: 999, completedAt: 10 },
     { id: "done", cwd: "/b", createdAt: 2, updatedAt: 20, completedAt: 20 },
@@ -34,6 +34,63 @@ test("完成时间决定对话和项目顺序，打开时间、项目添加顺�
   );
   assert.equal(threadTime(threads[3]), 15);
   assert.equal(threads[0].id, "opened");
+});
+
+test("首次加载后沿用项目顺序，归档、恢复和完成时间变化仅更新组内对话", () => {
+  const threads = [
+    { id: "a-new", cwd: "/a", completedAt: 100 },
+    { id: "b", cwd: "/b", completedAt: 90 },
+    { id: "a-old", cwd: "/a", completedAt: 10 },
+  ];
+  const order = projectGroups(threads, [], []).map(([path]) => path);
+  const groups = (list, pins = []) =>
+    projectGroups(list, [], pins, {}, "", order).map(([path, items]) => [
+      path,
+      items.map((thread) => thread.id),
+    ]);
+  assert.deepEqual(order, ["/a", "/b", ""]);
+  assert.deepEqual(groups(threads.slice(1)), [
+    ["/a", ["a-old"]],
+    ["/b", ["b"]],
+    ["", []],
+  ]);
+  assert.deepEqual(groups([threads[1]]), [
+    ["/a", []],
+    ["/b", ["b"]],
+    ["", []],
+  ]);
+  assert.deepEqual(groups([]), [
+    ["/a", []],
+    ["/b", []],
+    ["", []],
+  ]);
+  assert.deepEqual(groups(threads, ["a-new"]), [
+    ["/a", ["a-old"]],
+    ["/b", ["b"]],
+    ["", []],
+  ]);
+  const updated = threads.map((thread) => ({
+    ...thread,
+    completedAt: thread.id === "b" ? 200 : thread.completedAt,
+  }));
+  assert.deepEqual(groups(updated), [
+    ["/a", ["a-new", "a-old"]],
+    ["/b", ["b"]],
+    ["", []],
+  ]);
+  assert.deepEqual(
+    projectGroups(updated, [], []).map(([path]) => path),
+    ["/b", "/a", ""],
+  );
+  assert.deepEqual(
+    groups([...updated, { id: "new", cwd: "/new", completedAt: 300 }]),
+    [
+      ["/new", ["new"]],
+      ["/a", ["a-new", "a-old"]],
+      ["/b", ["b"]],
+      ["", []],
+    ],
+  );
 });
 
 test("客户端自动目录合并到未分类，CLI 与外部对话保留实际目录并参与排序", () => {

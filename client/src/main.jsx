@@ -189,6 +189,7 @@ function Sidebar() {
     s.pins,
     s.projectlessDirectories,
     s.projectlessRoot,
+    s.projectOrder || [],
   );
   return (
     <>

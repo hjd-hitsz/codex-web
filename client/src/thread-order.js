@@ -31,9 +31,13 @@ export function projectGroups(
   pins,
   projectlessDirectories = {},
   projectlessRoot = "",
+  projectOrder = [],
 ) {
-  const groups = new Map([["", []], ...projects.map((path) => [path, []])]);
+  const groups = new Map(
+    ["", ...projectOrder, ...projects].map((path) => [path, []]),
+  );
   const times = new Map();
+  const positions = new Map(projectOrder.map((path, index) => [path, index]));
   for (const thread of sortThreads(threads)) {
     const path = threadGroupPath(
       thread,
@@ -47,7 +51,9 @@ export function projectGroups(
   }
   return [...groups].sort(
     ([a], [b]) =>
-      (times.get(b) || 0) - (times.get(a) || 0) || a.localeCompare(b),
+      (positions.get(a) ?? -1) - (positions.get(b) ?? -1) ||
+      (times.get(b) || 0) - (times.get(a) || 0) ||
+      a.localeCompare(b),
   );
 }
 
