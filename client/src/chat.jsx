@@ -61,6 +61,7 @@ import { ServiceTierToggle } from "./service-tier-toggle";
 import { ReasoningEffortControl } from "./reasoning-effort";
 import { MermaidBlock } from "./mermaid-block";
 import { MessageImage } from "./message-image";
+import { MessageLink } from "./message-link";
 import { messageUrlTransform } from "./image-source";
 
 function mathDelimiters(text) {
@@ -91,21 +92,7 @@ export function RichText({ text }) {
           [rehypeHighlight, { plainText: ["mermaid"] }],
         ]}
         components={{
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => {
-                if (href?.startsWith("/")) {
-                  e.preventDefault();
-                  set({ panel: "files", panelFile: href.replace(/:\d+$/, "") });
-                }
-              }}
-            >
-              {children}
-            </a>
-          ),
+          a: MessageLink,
           pre: CodeBlock,
           img: MessageImage,
         }}

@@ -20,6 +20,8 @@
   --accent-fg: #fff;
   --green: #23845d;
   --red: #b64339;
+  --link: #245cc0;
+  --link-hover: #174798;
   --mono: Consolas, "Liberation Mono", monospace;
   --shadow: 0 12px 40px #00000012;
   font-size: 13px;
@@ -43,6 +45,8 @@
   --accent-fg: #222220;
   --green: #7ad0a5;
   --red: #f19083;
+  --link: #8ab4f8;
+  --link-hover: #b6d2ff;
   --shadow: 0 12px 40px #0005;
 }
 @media (prefers-color-scheme: dark) {
@@ -61,6 +65,8 @@
     --accent-fg: #222220;
     --green: #7ad0a5;
     --red: #f19083;
+    --link: #8ab4f8;
+    --link-hover: #b6d2ff;
     --shadow: 0 12px 40px #0005;
   }
 }
@@ -769,6 +775,31 @@ p {
 .markdown p {
   line-height: inherit;
   margin: 1em 0;
+}
+.markdown .message-link {
+  color: var(--link);
+  text-decoration: none;
+  border-radius: 2px;
+}
+.markdown .message-link:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+.markdown .message-link:focus-visible {
+  outline-color: var(--link);
+}
+.message-link-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.25em;
+  vertical-align: -0.13em;
+}
+.markdown .message-link code {
+  color: inherit;
+  background: none;
+  padding: 0;
+  border-radius: 0;
 }
 .markdown h1 {
   font-size: 23px;
