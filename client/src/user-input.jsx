@@ -1,5 +1,57 @@
 import React, { useId, useState } from "react";
-import { MessageSquare } from "lucide-react";
+import { Check, ChevronRight, MessageSquare } from "lucide-react";
+
+export function QuestionRecord({ questions, answers, children }) {
+  return (
+    <details className="request-card historical-questions">
+      <summary className="request-title question-record-summary">
+        <MessageSquare size={18} />
+        提问
+        <small className="request-hint">
+          {answers ? "回答已发送" : "提问已结束"}
+        </small>
+        <ChevronRight className="question-record-chevron" size={14} />
+      </summary>
+      <div className="question-record-content">
+        {children}
+        {questions.map((question) => {
+          const values = answers?.[question.id]?.answers;
+          return (
+            <section className="question" key={question.id}>
+              <p>{question.question}</p>
+              {question.options?.map((option, index) => {
+                const selected = values?.includes(option.label);
+                return (
+                  <div
+                    className={
+                      "answer-option recorded-option " +
+                      (selected ? "selected" : "")
+                    }
+                    key={index}
+                  >
+                    {selected && <Check size={15} aria-label="已选择" />}
+                    <span>
+                      <b>{option.label}</b>
+                      {option.description && (
+                        <small>{option.description}</small>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              {values && (
+                <p className="recorded-answer">
+                  <b>你的回答：</b>
+                  {question.isSecret ? "已提交私密回答" : values.join("\n")}
+                </p>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
 
 export function UserInputForm({
   questions,

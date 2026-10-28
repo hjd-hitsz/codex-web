@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { fullAccessParams } from "./execution-policy";
 import { modelServiceTiers, resolveServiceTier } from "./service-tier";
+import { inputRequestItem } from "./question-state";
 import {
   createThreadOrdering,
   projectGroups,
@@ -194,6 +195,7 @@ export function respond(request, result, error) {
     socket.send(
       JSON.stringify({ id: request.id, ...(error ? { error } : { result }) }),
     );
+    recordInputRequest(request, error ? undefined : result?.answers);
     set({
       questions: state.questions.filter(
         (q) => String(q.id) !== String(request.id),
@@ -218,6 +220,13 @@ function connect() {
         undoneFiles[JSON.stringify([file.threadId, file.turnId, file.path])] =
           true;
       persist("cx-undone-files", undoneFiles);
+      for (const request of state.questions)
+        if (
+          !m.params.questions.some(
+            (next) => String(next.id) === String(request.id),
+          )
+        )
+          recordInputRequest(request);
       set({
         undoneFiles,
         ...(!state.cwd && m.params.defaultCwd
@@ -575,6 +584,16 @@ function put(item) {
   else items[index] = { ...items[index], ...item };
   set({ items });
 }
+function recordInputRequest(request, answers) {
+  if (
+    request.method !== "item/tool/requestUserInput" ||
+    request.params.threadId !== state.current?.id
+  )
+    return;
+  const item = inputRequestItem(request, answers);
+  const previous = state.items.find((entry) => entry.id === item.id);
+  put({ ...item, answers: answers || previous?.answers });
+}
 function closeTerminal(processId) {
   if (localStorage.getItem("cx-terminal") !== processId) return;
   localStorage.removeItem("cx-terminal");
@@ -641,6 +660,8 @@ function handle({ method, params: p = {} }) {
     method === "serverRequest/resolved"
   ) {
     const id = method === "serverRequest/resolved" ? p.requestId : p.id;
+    const request = state.questions.find((q) => String(q.id) === String(id));
+    if (request) recordInputRequest(request);
     set({
       questions: state.questions.filter((q) => String(q.id) !== String(id)),
     });
@@ -723,9 +744,24 @@ function handle({ method, params: p = {} }) {
     set({ serviceTier: p.threadSettings.serviceTier ?? null });
   if (method === "error") report(p.error || p.message || "任务失败");
   if (method === "item/started" || method === "item/completed") {
-    if (p.item.type === "userMessage")
+    let questionId;
+    if (p.item.type === "userMessage") {
+      const text = (p.item.content || [])
+        .filter((content) => content.type === "text")
+        .map((content) => content.text)
+        .join("\n");
+      questionId = state.items.find(
+        (item) =>
+          item.optimistic &&
+          item.questionId &&
+          item.content
+            .filter((content) => content.type === "text")
+            .map((content) => content.text)
+            .join("\n") === text,
+      )?.questionId;
       set({ items: state.items.filter((i) => !i.optimistic) });
-    put({ ...p.item, turnId: p.turnId });
+    }
+    put({ ...p.item, turnId: p.turnId, ...(questionId ? { questionId } : {}) });
   }
   if (method === "item/agentMessage/delta") {
     const i = state.items.find((i) => i.id === p.itemId) || {
@@ -790,7 +826,7 @@ export async function ensureThread() {
 export async function sendMessage(
   text = state.draft,
   attachments = state.attachments,
-  { clearDraft = true } = {},
+  { clearDraft = true, questionId, questionAnswers } = {},
 ) {
   if (
     (!text.trim() && !attachments.length) ||
@@ -816,6 +852,7 @@ export async function sendMessage(
       turnId: running,
       content: input,
       optimistic: true,
+      ...(questionId ? { questionId } : {}),
     });
     const params = {
       threadId: thread.id,
@@ -860,6 +897,10 @@ export async function sendMessage(
           ...(state.draft === text ? { draft: "" } : {}),
           attachments: [],
         });
+    }
+    if (questionId && state.current?.id === thread.id) {
+      const question = state.items.find((item) => item.id === questionId);
+      if (question) put({ ...question, questionAnswers });
     }
     if (r.turn?.status === "inProgress")
       set({ active: { ...state.active, [thread.id]: r.turn.id } });

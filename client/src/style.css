@@ -1306,6 +1306,28 @@ p {
   border-radius: 12px;
   margin: 18px 0;
 }
+.historical-questions {
+  color: var(--fg);
+  padding: 0;
+}
+.historical-questions > .question-record-summary {
+  list-style: none;
+  cursor: pointer;
+  margin: 0;
+  padding: 12px 14px;
+}
+.question-record-summary::-webkit-details-marker {
+  display: none;
+}
+.question-record-chevron {
+  margin-left: auto;
+}
+.historical-questions[open] > summary .question-record-chevron {
+  transform: rotate(90deg);
+}
+.question-record-content {
+  padding: 0 14px 14px;
+}
 .request-title {
   display: flex;
   gap: 8px;
@@ -1369,6 +1391,22 @@ p {
 .answer-option.selected {
   border-color: var(--muted);
   background: var(--subtle);
+}
+.recorded-option {
+  cursor: default;
+  align-items: flex-start;
+}
+.recorded-option > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--green);
+}
+.recorded-answer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.historical-questions .question:last-child {
+  margin-bottom: 0;
 }
 .answer-option input {
   margin: 3px 0;

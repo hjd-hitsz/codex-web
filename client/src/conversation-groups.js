@@ -1,46 +1,96 @@
 import { reasoningSummaries } from "./reasoning-summary.js";
+import { asyncQuestionState } from "./question-state.js";
 
-// 每轮活动合并为一个过程区域，放在该轮最后一条用户消息或提问之后、最终回答之前。
-export function conversationGroups(items) {
+// 每轮活动合并为一个过程区域，待答卡片放在过程下方，已答提问收入过程。
+export function conversationGroups(items, requests = []) {
+  const { answered, responses } = asyncQuestionState(items);
+  const requestIds = new Set(requests.map((request) => String(request.id)));
   const lastInTurn = new Map();
   for (const item of items)
-    if (item.turnId) lastInTurn.set(item.turnId, item.id);
+    if (item.turnId && !responses.has(item.id))
+      lastInTurn.set(item.turnId, item.id);
   const groups = [];
   const processes = new Map();
+  function processFor(item) {
+    let process = processes.get(item.turnId);
+    // 无轮次信息的历史活动仅合并相邻记录，避免跨任务聚合。
+    if (!item.turnId && groups.at(-1) !== process) process = null;
+    if (!process) {
+      process = {
+        type: "process",
+        id: "process-" + (item.turnId || item.id),
+        turnId: item.turnId,
+        items: [],
+        questions: [],
+      };
+      processes.set(item.turnId, process);
+      const final = item.turnId
+        ? groups.findIndex(
+            (group) =>
+              group.type === "message" &&
+              group.item.turnId === item.turnId &&
+              group.item.type === "agentMessage",
+          )
+        : -1;
+      if (final >= 0) groups.splice(final, 0, process);
+      else {
+        const previous = item.turnId
+          ? groups.findLastIndex(
+              (group) => (group.turnId || group.item?.turnId) === item.turnId,
+            )
+          : -1;
+        groups.splice(previous >= 0 ? previous + 1 : groups.length, 0, process);
+      }
+    }
+    return process;
+  }
   for (const item of items) {
+    if (responses.has(item.id)) continue;
+    if (
+      item.type === "userInputRequest" &&
+      requestIds.has(String(item.request.id))
+    )
+      continue;
     if (item.type === "reasoning" && !reasoningSummaries(item.summary).length)
       continue;
     const question = item.type === "agentMessage" && !!item.questions?.length;
     if (item.type === "agentMessage" && !item.text?.trim() && !question)
       continue;
     const answer =
+      !question &&
       item.type === "agentMessage" &&
       (item.phase === "final_answer" ||
         (item.phase !== "commentary" &&
           lastInTurn.get(item.turnId) === item.id));
-    if (item.type === "userMessage" || question || answer) {
+    if (question && !answered.has(item.id)) {
+      processFor(item).questions.push({ type: "message", id: item.id, item });
+    } else if (item.type === "userMessage" || answer) {
       groups.push({ type: "message", id: item.id, item });
       const process = item.turnId && processes.get(item.turnId);
-      if ((item.type === "userMessage" || question) && process) {
+      if (item.type === "userMessage" && process) {
         groups.splice(groups.indexOf(process), 1);
         groups.push(process);
       }
     } else {
-      let process = processes.get(item.turnId);
-      // 无轮次信息的历史活动仅合并相邻记录，避免跨任务聚合。
-      if (!item.turnId && groups.at(-1) !== process) process = null;
-      if (!process) {
-        process = {
-          type: "process",
-          id: "process-" + item.id,
-          turnId: item.turnId,
-          items: [],
-        };
-        processes.set(item.turnId, process);
-        groups.push(process);
-      }
-      process.items.push(item);
+      processFor(item).items.push(
+        question ? { ...item, questionAnswers: answered.get(item.id) } : item,
+      );
     }
   }
-  return groups;
+  for (const request of requests) {
+    const turnId = request.params?.turnId;
+    let process = processes.get(turnId);
+    if (!process) {
+      process = processFor({ id: `user-input-${request.id}`, turnId });
+    }
+    process.questions.push({
+      type: "request",
+      id: `request-${request.id}`,
+      turnId,
+      request,
+    });
+  }
+  return groups.flatMap((group) =>
+    group.type === "process" ? [group, ...group.questions] : [group],
+  );
 }

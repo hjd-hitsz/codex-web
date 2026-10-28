@@ -41,7 +41,7 @@ test("中途引导消息独立显示，同轮过程汇总到最后一条引导�
   ]);
   assert.deepEqual(
     groups.map((g) => g.id),
-    ["user", "steer", "next-steer", "process-progress", "answer"],
+    ["user", "steer", "next-steer", "process-turn-1", "answer"],
   );
   assert.deepEqual(
     groups[3].items.map((entry) => entry.id),
@@ -80,11 +80,11 @@ test("每轮过程各自汇总，前一轮的引导和过程保留在该轮最�
     [
       "user",
       "steer",
-      "process-progress",
+      "process-turn-1",
       "answer",
       "next-user",
       "next-steer",
-      "process-next-progress",
+      "process-turn-2",
       "next-answer",
     ],
   );
@@ -114,7 +114,7 @@ test("缺少轮次信息的活动与其他轮次的活动分别分组", () => {
   ]);
   assert.deepEqual(
     groups.map((g) => g.id),
-    ["process-progress", "process-tool", "process-thought"],
+    ["process-progress", "process-turn-1", "process-thought"],
   );
 });
 test("空摘要不创建折叠区域，只有最终回答时直接显示", () => {
@@ -154,8 +154,130 @@ test("异步提问保持展开，空正文和后续进度均保留问题卡片",
   ]);
   assert.deepEqual(
     groups.map((group) => group.type),
-    ["message", "process", "message"],
+    ["process", "message", "message"],
   );
-  assert.equal(groups[0].item, question);
-  assert.deepEqual(groups[1].items, [progress, tool]);
+  assert.equal(groups[1].item, question);
+  assert.deepEqual(groups[0].items, [progress, tool]);
+});
+
+test("只有提问时建立稳定的过程区域，提交成功后题目与回答收入原区域", () => {
+  const question = item("question", "agentMessage", {
+    text: "",
+    questions: [{ title: "选择部署方式", options: ["源码", "npm"] }],
+  });
+  const pending = conversationGroups([user, question]);
+  assert.deepEqual(
+    pending.map((group) => group.id),
+    ["user", "process-turn-1", "question"],
+  );
+  const completed = conversationGroups([
+    user,
+    question,
+    item("response", "userMessage", {
+      content: [{ type: "text", text: "选择部署方式\n回答：npm" }],
+    }),
+    answer,
+  ]);
+  assert.deepEqual(
+    completed.map((group) => group.id),
+    ["user", pending[1].id, "answer"],
+  );
+  assert.deepEqual(completed[1].items[0].questionAnswers, ["npm"]);
+});
+
+test("同轮多批问题各自收纳，普通引导后过程与待答卡片保持顺序", () => {
+  const question = item("question", "agentMessage", {
+    text: "",
+    questions: [{ title: "选择部署方式", options: ["源码", "npm"] }],
+  });
+  const next = {
+    ...question,
+    id: "next-question",
+    questions: [{ title: "选择配置", options: ["保留", "覆盖"] }],
+  };
+  const groups = conversationGroups([
+    user,
+    progress,
+    question,
+    next,
+    item("response", "userMessage", {
+      content: [{ type: "text", text: "选择部署方式\n回答：npm" }],
+    }),
+    item("steer", "userMessage"),
+    tool,
+    answer,
+  ]);
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["user", "steer", "process-turn-1", "next-question", "answer"],
+  );
+  assert.deepEqual(
+    groups[2].items.map((entry) => entry.id),
+    ["progress", "question", "tool"],
+  );
+});
+
+test("同步提问跟随所属轮次过程，独立于其他轮次及最终回答", () => {
+  const request = { id: "request", params: { turnId: "turn-1" } };
+  const groups = conversationGroups(
+    [
+      user,
+      progress,
+      answer,
+      item("next-user", "userMessage", { turnId: "turn-2" }),
+    ],
+    [request],
+  );
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["user", "process-turn-1", "request-request", "answer", "next-user"],
+  );
+});
+
+test("重新出现的同步待答请求替换页面中的旧结束记录", () => {
+  const request = { id: 37, params: { turnId: "turn-1" } };
+  const groups = conversationGroups(
+    [user, item("user-input-37", "userInputRequest", { request })],
+    [{ ...request, id: "37" }],
+  );
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["user", "process-turn-1", "request-37"],
+  );
+  assert.deepEqual(groups[1].items, []);
+});
+
+test("结束通知迟于最终回答时，提问记录仍位于最终回答上方", () => {
+  const request = { id: 37, params: { turnId: "turn-1" } };
+  const groups = conversationGroups([
+    user,
+    answer,
+    item("user-input-37", "userInputRequest", { request }),
+  ]);
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["user", "process-turn-1", "answer"],
+  );
+});
+
+test("已回答的提问保持折叠，后续轮次的回答消息归入原问题", () => {
+  const question = item("question", "agentMessage", {
+    text: "",
+    questions: [{ title: "选择部署方式" }],
+  });
+  const groups = conversationGroups([
+    user,
+    question,
+    answer,
+    item("response", "userMessage", {
+      turnId: "turn-2",
+      content: [{ type: "text", text: "选择部署方式\n回答：容器\n远程部署" }],
+    }),
+    { ...progress, id: "next-progress", turnId: "turn-2" },
+  ]);
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["user", "process-turn-1", "answer", "process-turn-2"],
+  );
+  assert.deepEqual(groups[1].items[0].questionAnswers, ["容器\n远程部署"]);
 });

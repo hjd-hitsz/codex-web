@@ -21,7 +21,6 @@ import {
   Sparkles,
   ListChecks,
   Shield,
-  MessageSquare,
   CheckCircle2,
   AlertCircle,
   RefreshCw,
@@ -52,7 +51,7 @@ import { reasoningSummaries } from "./reasoning-summary";
 import { useSummaryTranslation } from "./use-summary-translation";
 import { conversationGroups } from "./conversation-groups";
 import { commandDescription } from "./command-description";
-import { UserInputForm } from "./user-input";
+import { QuestionRecord, UserInputForm } from "./user-input";
 import { ServiceTierToggle } from "./service-tier-toggle";
 import { ReasoningEffortControl } from "./reasoning-effort";
 import { MessageImage } from "./message-image";
@@ -254,17 +253,29 @@ function ReasoningPart({ title, body }) {
 }
 function Message({ item, annotations }) {
   if (item.type === "reasoning") return <Reasoning item={item} />;
-  if (item.type === "agentMessage" && item.questions?.length)
+  if (item.type === "userInputRequest")
+    return (
+      <QuestionRecord
+        questions={item.request.params.questions}
+        answers={item.answers}
+      />
+    );
+  if (item.type === "agentMessage" && item.questions?.length) {
+    const context = item.text?.trim() &&
+      !item.questions.some(
+        (question) => question.title.trim() === item.text.trim(),
+      ) && (
+        <MessageAnnotations item={item}>
+          <RichText text={item.text} annotations={annotations} />
+        </MessageAnnotations>
+      );
     return (
       <article className="message assistant-message">
-        {item.text?.trim() && (
-          <MessageAnnotations item={item}>
-            <RichText text={item.text} annotations={annotations} />
-          </MessageAnnotations>
-        )}
-        <AsyncQuestion item={item} />
+        {!item.questionAnswers && context}
+        <AsyncQuestion item={item} context={context} />
       </article>
     );
+  }
   if (item.type === "agentMessage" && item.phase === "commentary")
     return item.text?.trim() ? (
       <article className="message process-message">
@@ -334,40 +345,31 @@ function ReplyActions({ item }) {
     </div>
   );
 }
-function AsyncQuestion({ item }) {
+function AsyncQuestion({ item, context }) {
   const s = useStore();
-  const index = s.items.findIndex((entry) => entry.id === item.id);
-  const answered = s.items.slice(index + 1).some((entry) => {
-    if (entry.type !== "userMessage" || entry.optimistic) return false;
-    const text = (entry.content || [])
-      .filter((content) => content.type === "text")
-      .map((content) => content.text)
-      .join("\n");
-    return item.questions.every((question) =>
-      text.includes(`${question.title}\n回答：`),
-    );
-  });
-  if (answered)
+  const questions = item.questions.map((question, index) => ({
+    id: String(index),
+    header: `问题 ${index + 1}`,
+    question: question.title,
+    options: question.options?.map((label) => ({ label })),
+  }));
+  if (item.questionAnswers)
     return (
-      <div className="request-card historical-questions">
-        <div className="request-title">
-          <MessageSquare size={18} />
-          提问
-        </div>
-        {item.questions.map((question, index) => (
-          <p key={index}>{question.title}</p>
-        ))}
-        <small className="request-hint">回答已发送，可在消息框继续补充。</small>
-      </div>
+      <QuestionRecord
+        questions={questions}
+        answers={Object.fromEntries(
+          item.questionAnswers.map((text, index) => [
+            String(index),
+            { answers: [text] },
+          ]),
+        )}
+      >
+        {context}
+      </QuestionRecord>
     );
   return (
     <UserInputForm
-      questions={item.questions.map((question, index) => ({
-        id: String(index),
-        header: `问题 ${index + 1}`,
-        question: question.title,
-        options: question.options?.map((label) => ({ label })),
-      }))}
+      questions={questions}
       isBlocking={false}
       disabled={!s.connected || s.busy}
       onSubmit={(answers) =>
@@ -379,7 +381,13 @@ function AsyncQuestion({ item }) {
             )
             .join("\n\n"),
           [],
-          { clearDraft: false },
+          {
+            clearDraft: false,
+            questionId: item.id,
+            questionAnswers: item.questions.map(
+              (_, index) => answers[index].answers[0],
+            ),
+          },
         )
       }
     />
@@ -499,9 +507,11 @@ function ProcessDuration({ timing, working }) {
 }
 function ProcessGroup({ group, working, timing, annotations }) {
   const [open, setOpen] = useState(false);
-  const latest = group.items.at(-1);
+  const latest = group.items.findLast(
+    (item) => item.type !== "userInputRequest" && !item.questions?.length,
+  );
   const summary =
-    latest.type === "reasoning"
+    latest?.type === "reasoning"
       ? reasoningSummaries(latest.summary).at(-1)
       : null;
   return (
@@ -518,7 +528,7 @@ function ProcessGroup({ group, working, timing, annotations }) {
           )}
           <span>{working ? "正在处理" : "工作过程"}</span>
           <ProcessDuration timing={timing} working={working} />
-          <small>{group.items.length} 项</small>
+          <small>{group.items.length + group.questions.length} 项</small>
           <ChevronRight className="process-chevron" size={13} />
         </summary>
         {open && (
@@ -533,7 +543,7 @@ function ProcessGroup({ group, working, timing, annotations }) {
           </div>
         )}
       </details>
-      {working && !open && (
+      {working && !open && latest && (
         <div className="process-content process-preview">
           {summary ? (
             <ReasoningPart key={latest.id} {...summary} />
@@ -563,7 +573,12 @@ export function Conversation() {
     s.turns[s.current?.id] || [],
     active,
   );
-  const groups = conversationGroups(s.items);
+  const groups = conversationGroups(
+    s.items,
+    s.questions.filter(
+      (question) => question.params?.threadId === s.current?.id,
+    ),
+  );
   const replies = new Map(
     s.items
       .filter((item) => actions.has(item.id))
@@ -659,6 +674,8 @@ export function Conversation() {
                       working={!!active && active === group.turnId}
                       timing={s.turnTimings[s.current?.id]?.[group.turnId]}
                     />
+                  ) : group.type === "request" ? (
+                    <Question request={group.request} />
                   ) : (
                     <Message
                       key={`${s.current?.id}:${group.id}`}
@@ -705,11 +722,6 @@ export function Conversation() {
               ))}
             </details>
           )}
-          {s.questions
-            .filter((q) => q.params?.threadId === s.current?.id)
-            .map((q) => (
-              <Question key={q.id} request={q} />
-            ))}
           {active && (
             <div className="working-status">
               <span className="pulse-dot" />

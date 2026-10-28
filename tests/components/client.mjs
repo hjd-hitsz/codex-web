@@ -12,6 +12,7 @@ import { testAnnotations } from "./annotations.mjs";
 import { testFilePanel } from "./file-panel.mjs";
 import { testFileChanges } from "./file-changes.mjs";
 import { testProcessTiming } from "./process-timing.mjs";
+import { testQuestions } from "./questions.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -99,6 +100,12 @@ await testMermaid(app);
       (method, params) => socket.emit(method, params),
     );
     await testProcessTiming(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
+    await testQuestions(
       app,
       requests,
       (respond) => (responseFor = respond),
@@ -1967,6 +1974,13 @@ console.log(
   );
   assert.equal(app.get().draft, "尚未发送的草稿");
   assert.deepEqual(app.get().attachments, [{ id: "draft-file" }]);
+  assert.equal(view.root.findAllByType("form").length, 0);
+  assert(!JSON.stringify(view.toJSON()).includes("回答已发送"));
+  await act(async () =>
+    view.root
+      .findByProps({ className: "process-history" })
+      .props.onToggle({ currentTarget: { open: true } }),
+  );
   assert(JSON.stringify(view.toJSON()).includes("回答已发送"));
   await act(async () =>
     socket.emit("item/completed", {
