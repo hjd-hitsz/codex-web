@@ -14,6 +14,7 @@ import { testFileChanges } from "./file-changes.mjs";
 import { testProcessTiming } from "./process-timing.mjs";
 import { testQuestions } from "./questions.mjs";
 import { testConnectionLifecycle } from "./connection-lifecycle.mjs";
+import { testHistory } from "./history.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -70,6 +71,12 @@ await testMermaid(app);
 {
   const previousResponse = responseFor;
   try {
+    await testHistory(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
     await testThreadAccess(
       app,
       requests,

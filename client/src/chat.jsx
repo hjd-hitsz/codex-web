@@ -40,7 +40,6 @@ import {
   attachFile,
   respond,
   basename,
-  loadHistory,
   addAttachment,
   uid,
 } from "./store";
@@ -596,7 +595,7 @@ export function Conversation() {
   }, [s.current?.id]);
   useEffect(() => {
     if (follow.current) bottom.current?.scrollIntoView({ block: "end" });
-  }, [s.items, s.questions, plan, active, s.turnDiffs]);
+  }, [s.items, s.questions, plan, active, s.turnDiffs, s.loading]);
   if (!s.current && !s.loading)
     return (
       <div className="welcome">
@@ -650,14 +649,6 @@ export function Conversation() {
         }}
       >
         <div className="message-column">
-          {s.historyCursor && (
-            <button
-              className="load-older"
-              onClick={() => loadHistory(true).catch(report)}
-            >
-              加载更早的消息
-            </button>
-          )}
           {s.loading ? (
             <div className="loading">
               <LoaderCircle className="spin" size={16} />

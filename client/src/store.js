@@ -44,7 +44,6 @@ let state = {
   search: "",
   current: null,
   items: [],
-  historyCursor: null,
   turns: {},
   turnTimings: {},
   active: {},
@@ -445,7 +444,6 @@ export function newChat(
   set({
     current: null,
     items: [],
-    historyCursor: null,
     cwd: cwd || projectlessCwd || state.defaultCwd,
     projectless: !cwd,
     projectlessCwd,
@@ -491,11 +489,10 @@ export async function openThread(id, { preserveServiceTier = false } = {}) {
       model: thread.model || state.model,
       effort: thread.reasoningEffort || "",
       items: [],
-      historyCursor: null,
       draft: localStorage.getItem("cx-draft-" + id) || "",
     });
     localStorage.setItem("cx-current", id);
-    await loadHistory(false, epoch);
+    await loadHistory(epoch);
     if (epoch !== opening || deletedThreads.has(id)) return;
     set({ loading: false });
     await refreshThreadAccess({ preserveServiceTier });
@@ -574,24 +571,27 @@ export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
     .catch(() => {});
   return access.status === "ready";
 }
-export async function loadHistory(older = false, epoch = opening) {
+export async function loadHistory(epoch = opening) {
   if (!state.current) return;
   const id = state.current.id;
-  const page = await rpc("thread/items/list", {
-    threadId: id,
-    limit: 100,
-    sortDirection: "desc",
-    ...(older && state.historyCursor ? { cursor: state.historyCursor } : {}),
-  });
-  if (epoch !== opening || state.current?.id !== id) return;
+  const history = [];
+  let cursor;
+  do {
+    const page = await rpc("thread/items/list", {
+      threadId: id,
+      limit: 100,
+      sortDirection: "desc",
+      ...(cursor ? { cursor } : {}),
+    });
+    if (epoch !== opening || state.current?.id !== id) return;
+    history.push(...page.data);
+    cursor = page.nextCursor;
+  } while (cursor);
   const map = new Map(
-    page.data
-      .slice()
-      .reverse()
-      .map((e) => [e.item.id, { ...e.item, turnId: e.turnId }]),
+    history.reverse().map((e) => [e.item.id, { ...e.item, turnId: e.turnId }]),
   );
   for (const item of state.items) map.set(item.id, item);
-  set({ items: [...map.values()], historyCursor: page.nextCursor });
+  set({ items: [...map.values()] });
 }
 function put(item) {
   const index = state.items.findIndex((i) => i.id === item.id);
@@ -977,8 +977,7 @@ function syncArchivedThread(id) {
   pendingForks = pendingForks.filter((value) => value !== id);
   persist("cx-pending-forks", pendingForks);
   if ((state.threadAccess?.threadId || state.current?.id) === id) newChat();
-  else if (state.current?.id === id)
-    set({ current: null, items: [], historyCursor: null });
+  else if (state.current?.id === id) set({ current: null, items: [] });
   if (localStorage.getItem("cx-current") === id)
     localStorage.removeItem("cx-current");
   const active = { ...state.active };
