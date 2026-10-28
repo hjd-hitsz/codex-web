@@ -17,12 +17,12 @@
 在安装 Codex 的电脑上，以运行 Codex 的普通用户执行：
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/codex-web/releases/download/v2.1.2/codex-web-2.1.2.tgz
+npm install -g https://github.com/hjd-hitsz/codex-web/releases/download/v2.2.0/codex-web-2.2.0.tgz
 codex-web service install
 codex-web service status
 ```
 
-安装包来自 [GitHub Release v2.1.2](https://github.com/hjd-hitsz/codex-web/releases/tag/v2.1.2)，已包含可直接运行的网页。npm 全局命令所在目录需在 `PATH` 中。服务安装会创建并启动网页服务和缺失的 Codex 后端服务，保留已有后端配置。
+安装包来自 [GitHub Release v2.2.0](https://github.com/hjd-hitsz/codex-web/releases/tag/v2.2.0)，已包含可直接运行的网页。npm 全局命令所在目录需在 `PATH` 中。服务安装会创建并启动网页服务和缺失的 Codex 后端服务，保留已有后端配置。
 
 需要开机自动启动、退出登录后继续运行时，执行：
 
@@ -37,7 +37,7 @@ loginctl enable-linger "$USER"
 - 本机：`http://127.0.0.1:8766`。
 - 同一网络的其他设备：`http://电脑IP:8766`，将“电脑IP”替换为服务所在电脑的实际 IP，并允许防火墙访问 `8766` 端口。
 
-也可以下载 Release 的 `codex-web-2.1.2.tgz` 附件后执行 `npm install -g ./codex-web-2.1.2.tgz`。下载校验与更多部署选项见[部署与维护](docs/deployment.md)。
+也可以下载 Release 的 `codex-web-2.2.0.tgz` 附件后执行 `npm install -g ./codex-web-2.2.0.tgz`。下载校验与更多部署选项见[部署与维护](docs/deployment.md)。
 
 ### 前台运行
 
@@ -103,7 +103,7 @@ codex-web config init
 升级时，从目标版本的 Release 获取安装地址。当前版本的安装与服务更新命令为：
 
 ```bash
-npm install -g https://github.com/hjd-hitsz/codex-web/releases/download/v2.1.2/codex-web-2.1.2.tgz
+npm install -g https://github.com/hjd-hitsz/codex-web/releases/download/v2.2.0/codex-web-2.2.0.tgz
 codex-web service install
 codex-web service restart-when-idle
 ```
