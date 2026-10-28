@@ -45,6 +45,7 @@ let state = {
   items: [],
   historyCursor: null,
   turns: {},
+  turnTimings: {},
   active: {},
   questions: [],
   models: [],
@@ -172,6 +173,7 @@ export function rpc(method, params = {}, timeout = 120000) {
         }, timeout)
       : null;
     pending.set(id, {
+      method,
       resolve,
       reject,
       timer,
@@ -255,7 +257,11 @@ function connect() {
               syncArchivedThread(p.threadId);
           }
           p.reject(error);
-        } else p.resolve(m.result);
+        } else {
+          if (p.method === "thread/turns/list" && m.result?.data)
+            recordTurnTimings(p.threadId, m.result.data);
+          p.resolve(m.result);
+        }
       }
       return;
     }
@@ -574,6 +580,19 @@ function closeTerminal(processId) {
   localStorage.removeItem("cx-terminal");
   set({ terminalOpen: false });
 }
+function recordTurnTimings(threadId, turns) {
+  if (deletedThreads.has(threadId)) return;
+  const timings = { ...state.turnTimings[threadId] };
+  for (const turn of turns) {
+    const previous = timings[turn.id];
+    timings[turn.id] = {
+      startedAt: turn.startedAt ?? previous?.startedAt ?? null,
+      completedAt: turn.completedAt ?? previous?.completedAt ?? null,
+      durationMs: turn.durationMs ?? previous?.durationMs ?? null,
+    };
+  }
+  set({ turnTimings: { ...state.turnTimings, [threadId]: timings } });
+}
 function handle({ method, params: p = {} }) {
   if (method === "turn/started" || method === "turn/completed")
     turnRevisions.set(p.threadId, (turnRevisions.get(p.threadId) || 0) + 1);
@@ -627,9 +646,22 @@ function handle({ method, params: p = {} }) {
     });
     return;
   }
-  if (method === "turn/started")
+  if (method === "turn/started") {
+    recordTurnTimings(p.threadId, [
+      {
+        ...p.turn,
+        startedAt:
+          p.turn.startedAt ??
+          state.turnTimings[p.threadId]?.[p.turn.id]?.startedAt ??
+          Date.now() / 1000,
+      },
+    ]);
     set({ active: { ...state.active, [p.threadId]: p.turn.id } });
+  }
   if (method === "turn/completed") {
+    recordTurnTimings(p.threadId, [
+      { ...p.turn, completedAt: p.turn.completedAt ?? Date.now() / 1000 },
+    ]);
     threadOrdering.completed(p.threadId, p.turn);
     const active = { ...state.active };
     delete active[p.threadId];
@@ -802,12 +834,23 @@ export async function sendMessage(
         },
       },
     };
+    const startedAt = Date.now() / 1000;
     const r = await rpc(
       running ? "turn/steer" : "turn/start",
       running
         ? { threadId: thread.id, expectedTurnId: running, input }
         : params,
     );
+    if (r.turn)
+      recordTurnTimings(thread.id, [
+        {
+          ...r.turn,
+          startedAt:
+            r.turn.startedAt ??
+            state.turnTimings[thread.id]?.[r.turn.id]?.startedAt ??
+            startedAt,
+        },
+      ]);
     if (clearDraft) {
       const draftKey = "cx-draft-" + thread.id;
       if (localStorage.getItem(draftKey) === text)
@@ -907,6 +950,7 @@ function forgetThread(id) {
   for (const key of [
     "active",
     "turns",
+    "turnTimings",
     "diffs",
     "turnDiffs",
     "plans",

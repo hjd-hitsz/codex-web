@@ -60,6 +60,7 @@ import { RichText } from "./rich-text";
 import { annotationContexts } from "./annotations";
 import { AnnotatedUserText, MessageAnnotations } from "./message-annotations";
 import { TurnFileChanges } from "./turn-file-changes";
+import { turnElapsedMs, formatElapsed } from "./turn-timing";
 export { RichText } from "./rich-text";
 function Content({ content }) {
   return (
@@ -471,7 +472,32 @@ function Question({ request }) {
     </div>
   );
 }
-function ProcessGroup({ group, working, annotations }) {
+function ProcessDuration({ timing, working }) {
+  const [now, setNow] = useState(Date.now);
+  const ticking =
+    working &&
+    Number.isFinite(timing?.startedAt) &&
+    !Number.isFinite(timing?.completedAt) &&
+    !Number.isFinite(timing?.durationMs);
+  useEffect(() => {
+    if (!ticking) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking, timing?.startedAt]);
+  const elapsed = turnElapsedMs(timing, working, now);
+  if (elapsed === null) return null;
+  return (
+    <time
+      className="process-duration"
+      dateTime={`PT${Math.floor(elapsed / 1000)}S`}
+    >
+      {working ? "已用时 " : "总耗时 "}
+      {formatElapsed(elapsed)}
+    </time>
+  );
+}
+function ProcessGroup({ group, working, timing, annotations }) {
   const [open, setOpen] = useState(false);
   const latest = group.items.at(-1);
   const summary =
@@ -491,6 +517,7 @@ function ProcessGroup({ group, working, annotations }) {
             <ListChecks size={15} />
           )}
           <span>{working ? "正在处理" : "工作过程"}</span>
+          <ProcessDuration timing={timing} working={working} />
           <small>{group.items.length} 项</small>
           <ChevronRight className="process-chevron" size={13} />
         </summary>
@@ -630,6 +657,7 @@ export function Conversation() {
                       group={group}
                       annotations={annotations}
                       working={!!active && active === group.turnId}
+                      timing={s.turnTimings[s.current?.id]?.[group.turnId]}
                     />
                   ) : (
                     <Message

@@ -11,6 +11,7 @@ import { testThreadNames } from "./thread-names.mjs";
 import { testAnnotations } from "./annotations.mjs";
 import { testFilePanel } from "./file-panel.mjs";
 import { testFileChanges } from "./file-changes.mjs";
+import { testProcessTiming } from "./process-timing.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -91,6 +92,12 @@ await testMermaid(app);
     await testAnnotations(app, requests, (respond) => (responseFor = respond));
     await testFilePanel(app, requests, (respond) => (responseFor = respond));
     await testFileChanges(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
+    await testProcessTiming(
       app,
       requests,
       (respond) => (responseFor = respond),
