@@ -390,16 +390,25 @@ export function setDraft(draft) {
   set({ draft });
   localStorage.setItem("cx-draft-" + (state.current?.id || "new"), draft);
 }
-export function newChat(cwd = state.projectless ? "" : state.cwd) {
+export function newChat(
+  cwd = state.projectless ? "" : state.cwd,
+  { reuseDirectory = false } = {},
+) {
+  const projectlessCwd =
+    reuseDirectory &&
+    state.projectless &&
+    (state.current || state.projectlessCwd)
+      ? state.cwd
+      : null;
   opening++;
   localStorage.removeItem("cx-current");
   set({
     current: null,
     items: [],
     historyCursor: null,
-    cwd: cwd || state.defaultCwd,
+    cwd: cwd || projectlessCwd || state.defaultCwd,
     projectless: !cwd,
-    projectlessCwd: null,
+    projectlessCwd,
     draft: localStorage.getItem("cx-draft-new") || "",
     attachments: [],
     error: "",

@@ -351,6 +351,11 @@ function Header() {
       </div>
       <div className="topbar-actions">
         <IconButton
+          icon={Plus}
+          title="在当前目录新建对话"
+          onClick={() => newChat(undefined, { reuseDirectory: true })}
+        />
+        <IconButton
           icon={Files}
           title="文件"
           active={s.panel === "files"}

@@ -518,6 +518,11 @@ await act(async () =>
 );
 assert.equal(app.get().cwd, "/code/x");
 assert.equal(app.get().projectless, false);
+await act(async () => app.newChat(undefined, { reuseDirectory: true }));
+assert.equal(app.get().current, null);
+assert.equal(app.get().cwd, "/code/x");
+assert.equal(app.get().projectless, false);
+assert.equal(app.get().projectlessCwd, null);
 await act(async () => projectView.unmount());
 console.log("PASS 未分类分组展示与折叠、实际项目目录和新建对话入口");
 
@@ -565,6 +570,10 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
     active: {},
   });
   app.newChat("");
+  app.newChat(undefined, { reuseDirectory: true });
+  assert.equal(app.get().projectless, true);
+  assert.equal(app.get().projectlessCwd, null);
+  assert.equal(app.get().cwd, "/default");
   app.setDraft("创建无项目对话");
   const startCount = requests.filter((r) => r.method === "thread/start").length;
   assert.equal(await app.sendMessage(), false);
@@ -612,12 +621,27 @@ console.log("PASS 未分类分组展示与折叠、实际项目目录和新建�
   assert.equal(app.get().draft, "");
   assert.equal(app.get().projectless, true);
   assert.equal(app.get().projectlessCwd, null);
+  await app.openThread(thread.id);
+  const previousPreparations = preparations;
+  app.newChat(undefined, { reuseDirectory: true });
+  assert.equal(app.get().current, null);
+  assert.equal(app.get().cwd, thread.cwd);
+  assert.equal(app.get().projectless, true);
+  assert.equal(app.get().projectlessCwd, thread.cwd);
+  app.newChat(undefined, { reuseDirectory: true });
+  assert.equal(app.get().cwd, thread.cwd);
+  assert.equal(app.get().projectlessCwd, thread.cwd);
+  await app.ensureThread();
+  assert.equal(preparations, previousPreparations);
+  const reused = requests.findLast((r) => r.method === "thread/start");
+  assert.equal(reused.params.cwd, thread.cwd);
+  assert.equal(reused.params.threadSource, PROJECTLESS_SOURCE);
   app.newChat("/code/x");
   app.set({ threads: [], active: {}, error: "", model: "" });
   responseFor = (m) => (m.method === "thread/list" ? { data: [] } : {});
   requests.length = 0;
   console.log(
-    "PASS 未分类新建的独立目录、失败重试与草稿保留、统一权限、重新加载归类及新建上下文",
+    "PASS 未分类新建的独立目录、失败重试与草稿保留、统一权限、重新加载归类及当前目录复用",
   );
 }
 {
