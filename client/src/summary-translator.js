@@ -1,3 +1,6 @@
+const batchLengthLimit = 3000;
+const segmentLengthLimit = 1000;
+
 export function needsTranslation(text) {
   const prose = text.replace(/```[\s\S]*?```|`[^`]*`/g, "");
   const chinese = prose.match(/[\u3400-\u9fff]/g)?.length || 0;
@@ -26,11 +29,23 @@ export function createSummaryTranslator(requestBatch) {
   async function flush() {
     timer = null;
     const priority = queue.title.size ? "title" : "body";
-    const batch = [...queue[priority]].slice(0, 24);
+    const batch = [];
+    let length = 0;
+    for (const text of queue[priority]) {
+      if (
+        batch.length &&
+        (pending.get(text).single || length + text.length > batchLengthLimit)
+      )
+        break;
+      batch.push(text);
+      length += text.length;
+      if (pending.get(text).single || batch.length === 24) break;
+    }
     batch.forEach((text) => queue[priority].delete(text));
     running++;
     if (priority === "body") bodyRunning = true;
     schedule();
+    let retryAsSingles = false;
     try {
       const translations = await requestBatch(batch);
       if (
@@ -43,9 +58,15 @@ export function createSummaryTranslator(requestBatch) {
         pending.get(text).resolve(translations[index].trim());
       });
     } catch (error) {
-      batch.forEach((text) => pending.get(text).reject(error));
+      retryAsSingles = batch.length > 1;
+      batch.forEach((text) => {
+        if (retryAsSingles) {
+          pending.get(text).single = true;
+          queue[priority].add(text);
+        } else pending.get(text).reject(error);
+      });
     } finally {
-      batch.forEach((text) => pending.delete(text));
+      if (!retryAsSingles) batch.forEach((text) => pending.delete(text));
       running--;
       if (priority === "body") bodyRunning = false;
       schedule();
@@ -83,10 +104,75 @@ export async function translateSummaries(texts) {
       (part) => `<x${protectedParts[index].push(part) - 1}>`,
     ),
   );
+  const segments = source.map(splitTranslationText);
+  const queued = segments
+    .flat()
+    .filter((segment) =>
+      needsTranslation(segment.source.replace(/<x\d+>/g, "")),
+    );
+  let offset = 0;
+  while (offset < queued.length) {
+    const batch = [];
+    let length = 0;
+    while (
+      offset < queued.length &&
+      batch.length < 24 &&
+      length + queued[offset].source.length <= batchLengthLimit
+    ) {
+      const segment = queued[offset++];
+      batch.push(segment);
+      length += segment.source.length;
+    }
+    const translations = await requestTranslations(
+      batch.map((segment) => segment.source),
+    );
+    batch.forEach((segment, index) => (segment.value = translations[index]));
+  }
+  return segments.map((chunks, index) => {
+    const text = chunks
+      .map((chunk) => chunk.before + chunk.value + chunk.after)
+      .join("");
+    const parts = protectedParts[index];
+    const restored = new Set();
+    const result = text.replace(/<\s*x\s*(\d+)\s*>/gi, (match, id) => {
+      if (parts[id] === undefined || restored.has(id))
+        throw new Error("翻译格式异常，请重试");
+      restored.add(id);
+      return parts[id];
+    });
+    if (restored.size !== parts.length) throw new Error("翻译格式异常，请重试");
+    return result;
+  });
+}
+
+function splitTranslationText(text) {
+  const chunks = [];
+  while (text.length) {
+    let end = Math.min(text.length, segmentLengthLimit);
+    if (end < text.length) {
+      const newline = text.lastIndexOf("\n", end);
+      const space = text.lastIndexOf(" ", end);
+      if (newline >= end / 2) end = newline;
+      else if (space >= end / 2) end = space;
+      const tag = text.lastIndexOf("<x", end - 1);
+      if (tag >= 0 && text.indexOf(">", tag) >= end) end = tag;
+      const last = text.charCodeAt(end - 1);
+      if (last >= 0xd800 && last <= 0xdbff) end--;
+    }
+    const [, before, source, after] = text
+      .slice(0, end)
+      .match(/^(\s*)([\s\S]*?)(\s*)$/);
+    chunks.push({ before, source, after, value: source });
+    text = text.slice(end);
+  }
+  return chunks;
+}
+
+async function requestTranslations(texts) {
   const response = await fetch("/api/translate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ texts: source }),
+    body: JSON.stringify({ texts }),
     signal: AbortSignal.timeout(12000),
   });
   if (response.status === 404)
@@ -99,16 +185,5 @@ export async function translateSummaries(texts) {
     data.translations.some((text) => typeof text !== "string" || !text.trim())
   )
     throw new Error("翻译结果不完整");
-  return data.translations.map((text, index) => {
-    const parts = protectedParts[index];
-    const restored = new Set();
-    const result = text.replace(/<\s*x\s*(\d+)\s*>/gi, (match, id) => {
-      if (parts[id] === undefined || restored.has(id))
-        throw new Error("翻译格式异常，请重试");
-      restored.add(id);
-      return parts[id];
-    });
-    if (restored.size !== parts.length) throw new Error("翻译格式异常，请重试");
-    return result;
-  });
+  return data.translations;
 }

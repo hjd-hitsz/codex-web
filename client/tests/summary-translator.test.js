@@ -89,6 +89,71 @@ test("同一原文从正文提升为标题时立即发送并复用请求", async
   assert.deepEqual(batches, [["Shared translation text"]]);
 });
 
+test("长历史按正文总量分批，单条失败后隔离重试并保留其他译文", async () => {
+  const batches = [];
+  const sources = Array.from(
+    { length: 12 },
+    (_, index) =>
+      `Inspect item ${index}. ` + "Review the current settings. ".repeat(30),
+  );
+  const translator = createSummaryTranslator(async (texts) => {
+    batches.push(texts);
+    assert(texts.join("").length <= 3000, "历史正文请求限制总长度");
+    if (texts.includes(sources[4])) throw new Error("模拟单条正文翻译失败");
+    return texts.map((text) => "译文：" + text);
+  });
+  const results = await Promise.allSettled(
+    sources.map((source) => translator.translate(source)),
+  );
+  for (const [index, result] of results.entries()) {
+    assert.equal(result.status, index === 4 ? "rejected" : "fulfilled");
+    if (result.status === "fulfilled")
+      assert.equal(result.value, "译文：" + sources[index].trim());
+  }
+  assert(batches.some((batch) => batch.length > 1));
+  assert(
+    batches.some((batch) => batch.length === 1 && batch[0] === sources[4]),
+  );
+});
+
+test("长摘要拆段请求并恢复段落、代码、路径和 Unicode，长历史保持原顺序", async (t) => {
+  const batches = [];
+  const paragraph = "Inspect the selected workspace and preserve its state. ";
+  const sources = Array.from(
+    { length: 12 },
+    (_, index) =>
+      `  Inspect item ${index}.\n\n` +
+      paragraph.repeat(35) +
+      `\n\nInspect \`/fixture/${index}/config.js\` and **keep the existing behavior**.\n  `,
+  );
+  sources.push(
+    "a".repeat(999) + "🚀Inspect `config.model`\n\n" + paragraph.repeat(30),
+  );
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    assert.equal(url, "/api/translate");
+    const { texts } = JSON.parse(options.body);
+    batches.push(texts);
+    assert(texts.length <= 24);
+    assert(texts.join("").length <= 3000);
+    for (const text of texts) {
+      assert(text.length <= 1000, "长正文按翻译段落限制长度");
+      assert(text.isWellFormed(), "分段保留完整的 Unicode 字符");
+      assert(!/<x\d*$/.test(text), "分段保留完整代码占位符");
+      assert(!text.includes("/fixture/"));
+    }
+    return Response.json({
+      translations: texts.map((text) =>
+        text.replaceAll("Inspect", "检查").trim(),
+      ),
+    });
+  });
+  assert.deepEqual(
+    await translateSummaries(sources),
+    sources.map((source) => source.replaceAll("Inspect", "检查")),
+  );
+  assert(batches.length > 1);
+});
+
 test("通过本站批量请求翻译，恢复代码、路径和 Markdown 标记", async (t) => {
   const source =
     "**Reviewing changes**\nUpdate `config.model` in client/src/store.js and /tmp/config.json.\nSee https://example.com/docs and C:\\project\\file.js.\n<x0>\n```js\nconst ready = true;\n```";

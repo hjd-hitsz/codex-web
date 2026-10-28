@@ -15,6 +15,7 @@ import { testProcessTiming } from "./process-timing.mjs";
 import { testQuestions } from "./questions.mjs";
 import { testConnectionLifecycle } from "./connection-lifecycle.mjs";
 import { testHistory } from "./history.mjs";
+import { testHistoryTranslations } from "./history-translations.mjs";
 import { testConversationScroll } from "./conversation-scroll.mjs";
 import { testMessageNavigation } from "./message-navigation.mjs";
 import { testContextPanel } from "./context-panel.mjs";
@@ -81,6 +82,7 @@ await testMermaid(app);
       (method, params) => socket.emit(method, params),
     );
     await testConversationScroll(app);
+    await testHistoryTranslations(app);
     await testMessageNavigation(app);
     await testContextPanel(
       app,
