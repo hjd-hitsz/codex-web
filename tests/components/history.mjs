@@ -72,7 +72,9 @@ export async function testHistory(app, requests, setResponse, emit) {
       await app.openThread(thread.id);
       view = create(React.createElement(app.Conversation), {
         createNodeMock: () => ({
-          scrollIntoView: () => scrolls++,
+          set scrollTop(value) {
+            scrolls++;
+          },
           querySelectorAll: () => [],
           getBoundingClientRect: () => ({ top: 0 }),
           addEventListener() {},

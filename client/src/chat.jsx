@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import {
   ArrowUp,
   ArrowDown,
@@ -665,7 +665,7 @@ export function ReadOnlyConversation({ items, cwd, turns }) {
 export function Conversation({ children }) {
   const s = useStore(),
     scroll = useRef(),
-    bottom = useRef(),
+    column = useRef(),
     follow = useRef(true);
   const [below, setBelow] = useState(false);
   const annotations = annotationContexts(s.items);
@@ -692,13 +692,33 @@ export function Conversation({ children }) {
     const turnId = group.turnId || group.item?.turnId;
     if (turnId) lastGroups.set(turnId, group.id);
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     follow.current = true;
     setBelow(false);
   }, [s.current?.id]);
+  useLayoutEffect(() => {
+    const element = scroll.current;
+    if (element && follow.current) element.scrollTop = element.scrollHeight;
+  }, [
+    s.current?.id,
+    s.items,
+    s.questions,
+    plan,
+    active,
+    s.turnDiffs,
+    s.loading,
+  ]);
   useEffect(() => {
-    if (follow.current) bottom.current?.scrollIntoView({ block: "end" });
-  }, [s.items, s.questions, plan, active, s.turnDiffs, s.loading]);
+    const element = scroll.current;
+    const content = column.current;
+    if (!element || !content) return;
+    const observer = new ResizeObserver(() => {
+      if (follow.current) element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(element);
+    observer.observe(content, { box: "border-box" });
+    return () => observer.disconnect();
+  }, [s.current?.id, s.loading]);
   if (!s.current && !s.loading)
     return (
       <div className="conversation-layout">
@@ -756,7 +776,7 @@ export function Conversation({ children }) {
             setBelow(!follow.current);
           }}
         >
-          <div className="message-column">
+          <div className="message-column" ref={column}>
             {s.loading ? (
               <div className="loading">
                 <LoaderCircle className="spin" size={16} />
@@ -831,7 +851,6 @@ export function Conversation({ children }) {
                 Codex 正在工作<small>你可以继续补充要求</small>
               </div>
             )}
-            <div ref={bottom} />
           </div>
         </div>
         {below && (
@@ -840,7 +859,10 @@ export function Conversation({ children }) {
             title="回到最新消息"
             onClick={() => {
               follow.current = true;
-              bottom.current?.scrollIntoView({ behavior: "smooth" });
+              scroll.current?.scrollTo({
+                top: scroll.current.scrollHeight,
+                behavior: "smooth",
+              });
             }}
           >
             <ArrowDown size={16} />

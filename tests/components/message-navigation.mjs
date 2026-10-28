@@ -14,6 +14,7 @@ export async function testMessageNavigation(app) {
   let observers = 0;
   let disconnected = 0;
   let bottomCalls = 0;
+  let position = 0;
   let focused;
   let view;
   const items = Array.from({ length: 18 }, (_, index) => ({
@@ -25,7 +26,17 @@ export async function testMessageNavigation(app) {
   const scroller = {
     scrollHeight: 18000,
     clientHeight: 600,
-    scrollTop: 0,
+    get scrollTop() {
+      return position;
+    },
+    set scrollTop(top) {
+      position = Math.max(
+        0,
+        Math.min(top, this.scrollHeight - this.clientHeight),
+      );
+      bottomCalls++;
+      scrollListeners.get("scroll")?.();
+    },
     firstElementChild: {},
     getBoundingClientRect: () => ({ top: 50 }),
     querySelectorAll: () =>
@@ -110,14 +121,7 @@ export async function testMessageNavigation(app) {
                 focused = "trigger";
               },
             };
-          return {
-            scrollIntoView: () => {
-              bottomCalls++;
-              scroller.scrollTo({
-                top: scroller.scrollHeight - scroller.clientHeight,
-              });
-            },
-          };
+          return {};
         },
       });
     });
