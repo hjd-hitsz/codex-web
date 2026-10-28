@@ -219,7 +219,7 @@ test("标题任务按序执行并合并重复请求，使用已保存的首条�
   );
 });
 
-test("已有标题、临时会话、空消息和归档会话跳过生成", async () => {
+test("已有标题、子代理、临时会话、空消息和归档会话跳过生成", async () => {
   let generated = 0;
   const app = namingFixture(async () => {
     generated++;
@@ -228,6 +228,17 @@ test("已有标题、临时会话、空消息和归档会话跳过生成", async
   for (const [id, extra] of [
     ["named", { name: "手动标题" }],
     ["ephemeral", { ephemeral: true }],
+    ["child", { parentThreadId: "parent-fixture" }],
+    [
+      "legacy-child",
+      {
+        source: {
+          subAgent: {
+            thread_spawn: { parent_thread_id: "parent-fixture", depth: 1 },
+          },
+        },
+      },
+    ],
     ["empty", { preview: " " }],
     ["archived", { path: "/fixture/archived_sessions/fixture.jsonl" }],
   ])

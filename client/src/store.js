@@ -80,12 +80,18 @@ let state = {
   notice: "",
   panel: null,
   panelFile: null,
+  panelAgent: null,
+  contextOpen: null,
   terminalOpen: false,
   terminals: {},
   sidebar: false,
   modal: null,
 };
 export function set(patch) {
+  if (patch.contextOpen === false)
+    patch = { ...patch, panel: null, panelAgent: null };
+  else if (patch.panel && patch.contextOpen === undefined)
+    patch = { ...patch, contextOpen: true };
   if (patch.cwd) persist("cx-cwd", patch.cwd);
   if (patch.projectless !== undefined)
     persist("cx-projectless", patch.projectless);
@@ -94,6 +100,13 @@ export function set(patch) {
 }
 export function get() {
   return state;
+}
+export function openSubAgent(agent) {
+  set({
+    panel: "agent",
+    panelAgent: { ...agent, parentId: state.current?.id },
+    contextOpen: true,
+  });
 }
 export function selectModel(model) {
   const tier = resolveServiceTier(state.serviceTier, model);

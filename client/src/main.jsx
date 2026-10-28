@@ -15,9 +15,7 @@ import {
   GitBranch,
   ArchiveRestore,
   Minimize2,
-  Files,
   TerminalSquare,
-  GitPullRequest,
   X,
   Check,
   Sparkles,
@@ -63,18 +61,12 @@ import {
 import { Conversation, Composer } from "./chat";
 import { ServiceTierToggle } from "./service-tier-toggle";
 import { ReasoningEffortControl } from "./reasoning-effort";
-import {
-  IconButton,
-  Empty,
-  FolderPicker,
-  FilePanel,
-  ChangesPanel,
-  TerminalPanel,
-} from "./workspace";
+import { IconButton, Empty, FolderPicker, TerminalPanel } from "./workspace";
 import "./style.css";
 import { projectGroups, threadTime } from "./thread-order";
 import { VersionDetails } from "./version";
 import { ProjectGroup } from "./project-group";
+import { ContextWorkspace } from "./context-panel";
 
 function ThreadMenu({ thread, onClose }) {
   const s = useStore();
@@ -354,26 +346,6 @@ function Header() {
           icon={Plus}
           title="在当前目录新建对话"
           onClick={() => newChat(undefined, { reuseDirectory: true })}
-        />
-        <IconButton
-          icon={Files}
-          title="文件"
-          active={s.panel === "files"}
-          onClick={() => set({ panel: s.panel === "files" ? null : "files" })}
-        />
-        <IconButton
-          icon={GitPullRequest}
-          title="变更"
-          active={s.panel === "changes"}
-          onClick={() =>
-            set({ panel: s.panel === "changes" ? null : "changes" })
-          }
-        />
-        <IconButton
-          icon={TerminalSquare}
-          title="终端"
-          active={s.terminalOpen}
-          onClick={() => set({ terminalOpen: !s.terminalOpen })}
         />
       </div>
     </header>
@@ -817,16 +789,23 @@ function Modal() {
 }
 function App() {
   const s = useStore();
-  const [filesOpened, filesOpen] = useState(false);
-  useEffect(() => {
-    if (s.panel === "files") filesOpen(true);
-  }, [s.panel]);
   useEffect(() => {
     document.documentElement.dataset.theme = s.theme;
   }, [s.theme]);
   useEffect(() => {
     const key = (e) => {
       if (e.key === "Escape") {
+        if (
+          !get().modal &&
+          document.querySelector('.context-tools button[aria-expanded="true"]')
+        ) {
+          set({ contextOpen: false });
+          document
+            .querySelector(
+              '.context-tools button[aria-controls="conversation-context"]',
+            )
+            ?.focus();
+        }
         set({ modal: null, sidebar: false });
         return;
       }
@@ -860,7 +839,9 @@ function App() {
         )}
         <div className="workspace">
           <section className="chat-pane">
-            <Conversation />
+            <Conversation>
+              <ContextWorkspace />
+            </Conversation>
             {s.error && (
               <div className="error-banner">
                 <span>{s.error}</span>
@@ -873,19 +854,6 @@ function App() {
             )}
             <Composer />
           </section>
-          {filesOpened && (
-            <aside
-              className="workspace-panel file-workspace"
-              style={{ display: s.panel === "files" ? "flex" : "none" }}
-            >
-              <FilePanel />
-            </aside>
-          )}
-          {s.panel === "changes" && (
-            <aside className="workspace-panel">
-              <ChangesPanel />
-            </aside>
-          )}
         </div>
         {s.terminalOpen && <TerminalPanel />}
       </main>

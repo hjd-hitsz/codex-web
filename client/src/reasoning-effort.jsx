@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { set, useStore } from "./store";
 
-const labels = {
+export const reasoningEffortLabels = {
   none: "无",
   minimal: "极低",
   low: "低",
@@ -25,7 +25,7 @@ export function ReasoningEffortControl({ inline = false }) {
     0,
     options.findIndex((option) => option.reasoningEffort === effort),
   );
-  const label = labels[effort] || effort || "默认";
+  const label = reasoningEffortLabels[effort] || effort || "默认";
   useEffect(() => setOpen(false), [s.model, s.current?.id]);
 
   const slider = (
@@ -63,7 +63,8 @@ export function ReasoningEffortControl({ inline = false }) {
             data-selected={option.reasoningEffort === effort}
             title={option.description}
           >
-            {labels[option.reasoningEffort] || option.reasoningEffort}
+            {reasoningEffortLabels[option.reasoningEffort] ||
+              option.reasoningEffort}
           </span>
         ))}
       </div>

@@ -9,7 +9,7 @@ await mkdir(cache, { recursive: true });
 try {
   await build({
     stdin: {
-      contents: `export {Conversation, Composer, RichText} from './src/chat.jsx'; export {ReasoningEffortControl} from './src/reasoning-effort.jsx'; export {TerminalPanel, FilePanel} from './src/workspace.jsx'; export {VersionDetails} from './src/version.jsx'; export {ProjectGroup} from './src/project-group.jsx'; export * from './src/store.js';`,
+      contents: `export {Conversation, Composer, RichText} from './src/chat.jsx'; export {ContextWorkspace} from './src/context-panel.jsx'; export {ReasoningEffortControl} from './src/reasoning-effort.jsx'; export {TerminalPanel, FilePanel} from './src/workspace.jsx'; export {VersionDetails} from './src/version.jsx'; export {ProjectGroup} from './src/project-group.jsx'; export * from './src/store.js';`,
       resolveDir: root + "client",
     },
     banner: {

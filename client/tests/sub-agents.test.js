@@ -1,0 +1,141 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  applyAgentEvent,
+  mergeAgentHistory,
+  subAgentAction,
+  subAgents,
+} from "../src/sub-agents.js";
+
+test("子代理按对话 ID 合并活动，保留名称、模型与明确结束状态", () => {
+  const activity = {
+    type: "subAgentActivity",
+    agentThreadId: "agent-a",
+    agentPath: "/root/check_history",
+  };
+  const agents = subAgents([
+    {
+      ...activity,
+      kind: "started",
+      model: "fixture-model",
+      reasoningEffort: "high",
+    },
+    { ...activity, kind: "completed", model: null },
+    { ...activity, kind: "interacted", reasoningEffort: null },
+    { type: "agentMessage", text: "完成" },
+  ]);
+  assert.equal(agents.length, 1);
+  assert.deepEqual(agents[0], {
+    id: "agent-a",
+    path: "/root/check_history",
+    name: "check_history",
+    status: "completed",
+    message: undefined,
+    prompt: undefined,
+    model: "fixture-model",
+    reasoningEffort: "high",
+  });
+  assert.equal(
+    subAgentAction({ ...activity, kind: "interacted" }),
+    "更新子代理",
+  );
+});
+
+test("协作工具合并多个接收者及状态，旧记录保持可区分的名称", () => {
+  const item = {
+    type: "collabAgentToolCall",
+    tool: "spawnAgent",
+    receiverThreadIds: ["agent-a", "agent-a"],
+    prompt: "检查协议",
+    agentsStates: {
+      "agent-a": { status: "running", message: null },
+      "agent-b": { status: "errored", message: "模拟失败" },
+    },
+  };
+  const agents = subAgents([item]);
+  assert.equal(agents.length, 2);
+  assert.equal(agents[0].status, "running");
+  assert.equal(agents[1].message, "模拟失败");
+  assert.notEqual(agents[0].name, agents[1].name);
+  assert.equal(subAgentAction(item), "创建子代理");
+  assert.equal(
+    subAgents([
+      { type: "subAgentActivity", agentThreadId: "a", kind: "interacted" },
+    ])[0].status,
+    "unknown",
+  );
+});
+
+test("子代理流式更新保持历史前缀，完成记录替换流式正文且按记录 ID 去重", () => {
+  const original = [
+    { id: "reply", type: "agentMessage", text: "历史前缀", turnId: "turn" },
+  ];
+  const updated = applyAgentEvent(original, "item/agentMessage/delta", {
+    itemId: "reply",
+    turnId: "turn",
+    delta: "新增正文",
+  });
+  assert.equal(original[0].text, "历史前缀");
+  assert.equal(updated[0].text, "历史前缀新增正文");
+  const completed = applyAgentEvent(updated, "item/completed", {
+    turnId: "turn",
+    item: {
+      id: "reply",
+      type: "agentMessage",
+      text: "最终正文",
+      phase: "final_answer",
+    },
+  });
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].text, "最终正文");
+  assert.equal(completed[0].phase, "final_answer");
+});
+
+test("分页快照与读取期间的流式更新合并，省略已包含的文字并保留命令输出", () => {
+  const events = [
+    {
+      method: "item/agentMessage/delta",
+      params: { itemId: "reply", turnId: "turn", delta: "读取期间新增" },
+    },
+  ];
+  for (const text of ["历史前缀", "历史前缀读取期间", "历史前缀读取期间新增"])
+    assert.equal(
+      mergeAgentHistory(
+        [{ id: "reply", type: "agentMessage", text }],
+        events,
+      )[0].text,
+      "历史前缀读取期间新增",
+    );
+  const output = mergeAgentHistory(
+    [
+      {
+        id: "command",
+        type: "commandExecution",
+        aggregatedOutput: "first\nsecond\n",
+      },
+    ],
+    [
+      {
+        method: "item/commandExecution/outputDelta",
+        params: { itemId: "command", turnId: "turn", delta: "second\nthird\n" },
+      },
+    ],
+  );
+  assert.equal(output[0].aggregatedOutput, "first\nsecond\nthird\n");
+  const final = {
+    id: "reply",
+    type: "agentMessage",
+    text: "最终正文",
+    phase: "final_answer",
+  };
+  assert.equal(
+    mergeAgentHistory(
+      [{ id: "reply", text: "旧正文" }],
+      [
+        ...events,
+        { method: "item/completed", params: { item: final, turnId: "turn" } },
+      ],
+    )[0].text,
+    "最终正文",
+  );
+});

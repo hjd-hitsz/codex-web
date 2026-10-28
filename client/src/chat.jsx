@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  Users,
 } from "lucide-react";
 import {
   useStore,
@@ -42,6 +43,7 @@ import {
   basename,
   addAttachment,
   uid,
+  openSubAgent,
 } from "./store";
 import { IconButton, DiffBlock } from "./workspace";
 import { useComposerShortcuts } from "./shortcuts";
@@ -60,8 +62,9 @@ import { AnnotatedUserText, MessageAnnotations } from "./message-annotations";
 import { TurnFileChanges } from "./turn-file-changes";
 import { turnElapsedMs, formatElapsed } from "./turn-timing";
 import { ConversationNavigation } from "./conversation-navigation";
+import { isSubAgentItem, subAgentAction, subAgents } from "./sub-agents";
 export { RichText } from "./rich-text";
-function Content({ content }) {
+function Content({ content, cwd }) {
   return (
     <>
       {(content || []).map((c, i) =>
@@ -70,7 +73,7 @@ function Content({ content }) {
         ) : c.type === "image" || c.type === "localImage" ? (
           <div key={i} className="message-image">
             {c.url || c.path ? (
-              <MessageImage src={c.url || c.path} alt="图片附件" />
+              <MessageImage src={c.url || c.path} alt="图片附件" cwd={cwd} />
             ) : (
               <span>
                 <Paperclip size={14} />
@@ -101,10 +104,36 @@ const toolLabels = {
   enteredReviewMode: "开始代码审查",
   exitedReviewMode: "代码审查完成",
 };
-function Activity({ item }) {
+function Activity({ item, cwd }) {
   const [open, setOpen] = useState(false);
   const working = ["inProgress", "running"].includes(item.status);
   const failed = ["failed", "declined"].includes(item.status);
+  if (isSubAgentItem(item)) {
+    const agents = subAgents([item]);
+    return (
+      <div className="activity subagent-activity">
+        <button
+          className="activity-summary"
+          onClick={() => {
+            if (agents.length === 1) openSubAgent(agents[0]);
+            else set({ panel: null, contextOpen: true });
+          }}
+        >
+          <Users size={15} />
+          <span>
+            {subAgentAction(item)}
+            {agents.length === 1
+              ? " · " + agents[0].name
+              : agents.length
+                ? ` · ${agents.length} 个`
+                : ""}
+          </span>
+          {failed && <AlertCircle size={14} />}
+          <ChevronRight size={13} />
+        </button>
+      </div>
+    );
+  }
   const Icon =
     item.type === "commandExecution"
       ? TerminalSquare
@@ -166,7 +195,8 @@ function Activity({ item }) {
                       panel: "files",
                       panelFile: c.path.startsWith("/")
                         ? c.path
-                        : get().cwd + "/" + c.path,
+                        : (cwd || get().cwd) + "/" + c.path,
+                      contextOpen: true,
                     })
                   }
                 >
@@ -177,7 +207,7 @@ function Activity({ item }) {
               </div>
             ))
           ) : item.type === "plan" ? (
-            <RichText text={item.text || ""} />
+            <RichText text={item.text || ""} cwd={cwd} />
           ) : (
             <pre>
               {JSON.stringify(
@@ -192,12 +222,12 @@ function Activity({ item }) {
     </div>
   );
 }
-function Reasoning({ item }) {
+function Reasoning({ item, cwd }) {
   return reasoningSummaries(item.summary).map((summary, index) => (
-    <ReasoningPart key={index} {...summary} />
+    <ReasoningPart key={index} {...summary} cwd={cwd} />
   ));
 }
-function ReasoningPart({ title, body }) {
+function ReasoningPart({ title, body, cwd }) {
   const heading = useSummaryTranslation(title, "title");
   const content = useSummaryTranslation(body);
   const status = heading.pending ? (
@@ -217,7 +247,7 @@ function ReasoningPart({ title, body }) {
             {content.pending ? (
               <span className="translation-status">正在翻译摘要…</span>
             ) : (
-              <RichText text={content.text} />
+              <RichText text={content.text} cwd={cwd} />
             )}
             {content.error && (
               <button
@@ -251,14 +281,48 @@ function ReasoningPart({ title, body }) {
     </>
   );
 }
-function Message({ item, annotations }) {
-  if (item.type === "reasoning") return <Reasoning item={item} />;
+function Message({ item, annotations, readOnly = false, cwd }) {
+  if (item.type === "reasoning") return <Reasoning item={item} cwd={cwd} />;
   if (item.type === "userInputRequest")
     return (
       <QuestionRecord
         questions={item.request.params.questions}
         answers={item.answers}
       />
+    );
+  if (readOnly && item.type === "agentMessage")
+    return (
+      <article
+        className={
+          "message " +
+          (item.phase === "commentary"
+            ? "process-message"
+            : "assistant-message")
+        }
+      >
+        {item.text?.trim() && (
+          <RichText text={item.text} annotations={annotations} cwd={cwd} />
+        )}
+        {item.questions?.length > 0 && (
+          <QuestionRecord
+            questions={item.questions.map((question, index) => ({
+              id: String(index),
+              header: `问题 ${index + 1}`,
+              question: question.title,
+              options: question.options?.map((label) => ({ label })),
+            }))}
+            answers={
+              item.questionAnswers &&
+              Object.fromEntries(
+                item.questionAnswers.map((text, index) => [
+                  String(index),
+                  { answers: [text] },
+                ]),
+              )
+            }
+          />
+        )}
+      </article>
     );
   if (item.type === "agentMessage" && item.questions?.length) {
     const context = item.text?.trim() &&
@@ -294,35 +358,37 @@ function Message({ item, annotations }) {
         tabIndex={-1}
       >
         <div className="user-bubble">
-          <Content content={item.content} />
+          <Content content={item.content} cwd={cwd} />
         </div>
-        <div className="message-actions">
-          <IconButton
-            icon={Copy}
-            title="复制消息"
-            onClick={() =>
-              copy(
-                item.content
-                  ?.filter((c) => c.type === "text")
-                  .map((c) => c.text)
-                  .join("\n") || "",
-              )
-            }
-          />
-          <IconButton
-            icon={RotateCcw}
-            title="编辑并重新发送"
-            onClick={() => {
-              setDraft(
-                item.content
-                  ?.filter((c) => c.type === "text")
-                  .map((c) => c.text)
-                  .join("\n") || "",
-              );
-              document.querySelector('[aria-label="消息"]')?.focus();
-            }}
-          />
-        </div>
+        {!readOnly && (
+          <div className="message-actions">
+            <IconButton
+              icon={Copy}
+              title="复制消息"
+              onClick={() =>
+                copy(
+                  item.content
+                    ?.filter((c) => c.type === "text")
+                    .map((c) => c.text)
+                    .join("\n") || "",
+                )
+              }
+            />
+            <IconButton
+              icon={RotateCcw}
+              title="编辑并重新发送"
+              onClick={() => {
+                setDraft(
+                  item.content
+                    ?.filter((c) => c.type === "text")
+                    .map((c) => c.text)
+                    .join("\n") || "",
+                );
+                document.querySelector('[aria-label="消息"]')?.focus();
+              }}
+            />
+          </div>
+        )}
       </article>
     );
   if (item.type === "agentMessage")
@@ -333,7 +399,7 @@ function Message({ item, annotations }) {
         </MessageAnnotations>
       </article>
     );
-  return <Activity item={item} />;
+  return <Activity item={item} cwd={cwd} />;
 }
 function ReplyActions({ item }) {
   return (
@@ -511,7 +577,7 @@ function ProcessDuration({ timing, working }) {
     </time>
   );
 }
-function ProcessGroup({ group, working, timing, annotations }) {
+function ProcessGroup({ group, working, timing, annotations, readOnly, cwd }) {
   const [open, setOpen] = useState(false);
   const latest = group.items.findLast(
     (item) => item.type !== "userInputRequest" && !item.questions?.length,
@@ -544,6 +610,8 @@ function ProcessGroup({ group, working, timing, annotations }) {
                 key={item.id}
                 item={item}
                 annotations={annotations.get(item.id)}
+                readOnly={readOnly}
+                cwd={cwd}
               />
             ))}
           </div>
@@ -552,12 +620,14 @@ function ProcessGroup({ group, working, timing, annotations }) {
       {working && !open && latest && (
         <div className="process-content process-preview">
           {summary ? (
-            <ReasoningPart key={latest.id} {...summary} />
+            <ReasoningPart key={latest.id} {...summary} cwd={cwd} />
           ) : (
             <Message
               key={latest.id}
               item={latest}
               annotations={annotations.get(latest.id)}
+              readOnly={readOnly}
+              cwd={cwd}
             />
           )}
         </div>
@@ -565,7 +635,34 @@ function ProcessGroup({ group, working, timing, annotations }) {
     </div>
   );
 }
-export function Conversation() {
+export function ReadOnlyConversation({ items, cwd, turns }) {
+  const annotations = annotationContexts(items);
+  const groups = conversationGroups(items);
+  return groups.map((group) =>
+    group.type === "process" ? (
+      <ProcessGroup
+        key={group.id}
+        group={group}
+        working={turns.some(
+          (turn) => turn.id === group.turnId && turn.status === "inProgress",
+        )}
+        timing={turns.find((turn) => turn.id === group.turnId)}
+        annotations={annotations}
+        readOnly
+        cwd={cwd}
+      />
+    ) : group.type === "message" ? (
+      <Message
+        key={group.id}
+        item={group.item}
+        annotations={annotations.get(group.item.id)}
+        readOnly
+        cwd={cwd}
+      />
+    ) : null,
+  );
+}
+export function Conversation({ children }) {
   const s = useStore(),
     scroll = useRef(),
     bottom = useRef(),
@@ -604,132 +701,153 @@ export function Conversation() {
   }, [s.items, s.questions, plan, active, s.turnDiffs, s.loading]);
   if (!s.current && !s.loading)
     return (
-      <div className="welcome">
-        <div className="welcome-symbol">
-          <span>⌘</span>
+      <div className="conversation-layout">
+        <div className="welcome">
+          <div className="welcome-symbol">
+            <span>⌘</span>
+          </div>
+          <h1>今天想完成什么？</h1>
+          <p>从一个想法开始，把工作交给 Codex。</p>
+          <div className="suggestions">
+            {[
+              {
+                icon: FileCode,
+                title: "了解这个项目",
+                text: "请阅读当前项目，介绍它的结构、运行方式和主要模块。",
+              },
+              {
+                icon: GitBranch,
+                title: "检查代码变更",
+                text: "请审查当前项目尚未提交的代码变更，指出确实存在的问题。",
+              },
+              {
+                icon: ListChecks,
+                title: "制定实现计划",
+                text: "我想实现一个新功能。先了解项目，并和我一起制定实现计划。",
+              },
+            ].map(({ icon: Icon, title, text }) => (
+              <button
+                key={title}
+                onClick={() => {
+                  setDraft(text);
+                  document.querySelector('[aria-label="消息"]')?.focus();
+                }}
+              >
+                <Icon size={19} />
+                <span>{title}</span>
+                <ChevronRight size={14} />
+              </button>
+            ))}
+          </div>
         </div>
-        <h1>今天想完成什么？</h1>
-        <p>从一个想法开始，把工作交给 Codex。</p>
-        <div className="suggestions">
-          {[
-            {
-              icon: FileCode,
-              title: "了解这个项目",
-              text: "请阅读当前项目，介绍它的结构、运行方式和主要模块。",
-            },
-            {
-              icon: GitBranch,
-              title: "检查代码变更",
-              text: "请审查当前项目尚未提交的代码变更，指出确实存在的问题。",
-            },
-            {
-              icon: ListChecks,
-              title: "制定实现计划",
-              text: "我想实现一个新功能。先了解项目，并和我一起制定实现计划。",
-            },
-          ].map(({ icon: Icon, title, text }) => (
-            <button
-              key={title}
-              onClick={() => {
-                setDraft(text);
-                document.querySelector('[aria-label="消息"]')?.focus();
-              }}
-            >
-              <Icon size={19} />
-              <span>{title}</span>
-              <ChevronRight size={14} />
-            </button>
-          ))}
-        </div>
+        {children}
       </div>
     );
   return (
-    <div className="conversation-wrap">
-      <div
-        className="conversation"
-        ref={scroll}
-        onScroll={() => {
-          const e = scroll.current;
-          follow.current = e.scrollHeight - e.scrollTop - e.clientHeight < 100;
-          setBelow(!follow.current);
-        }}
-      >
-        <div className="message-column">
-          {s.loading ? (
-            <div className="loading">
-              <LoaderCircle className="spin" size={16} />
-              正在打开对话…
-            </div>
-          ) : (
-            groups.map((group) => {
-              const turnId = group.turnId || group.item?.turnId;
-              return (
-                <React.Fragment key={`${s.current?.id}:${group.id}`}>
-                  {group.type === "process" ? (
-                    <ProcessGroup
-                      key={`${s.current?.id}:${group.id}`}
-                      group={group}
-                      annotations={annotations}
-                      working={!!active && active === group.turnId}
-                      timing={s.turnTimings[s.current?.id]?.[group.turnId]}
-                    />
-                  ) : group.type === "request" ? (
-                    <Question request={group.request} />
-                  ) : (
-                    <Message
-                      key={`${s.current?.id}:${group.id}`}
-                      item={group.item}
-                      annotations={annotations.get(group.item.id)}
-                    />
-                  )}
-                  {turnId && lastGroups.get(turnId) === group.id && (
-                    <>
-                      <TurnFileChanges
-                        turnId={turnId}
-                        items={s.items.filter((item) => item.turnId === turnId)}
+    <div className="conversation-layout">
+      <div className="conversation-wrap">
+        <div
+          className="conversation"
+          ref={scroll}
+          onScroll={() => {
+            const e = scroll.current;
+            follow.current =
+              e.scrollHeight - e.scrollTop - e.clientHeight < 100;
+            setBelow(!follow.current);
+          }}
+        >
+          <div className="message-column">
+            {s.loading ? (
+              <div className="loading">
+                <LoaderCircle className="spin" size={16} />
+                正在打开对话…
+              </div>
+            ) : (
+              groups.map((group) => {
+                const turnId = group.turnId || group.item?.turnId;
+                return (
+                  <React.Fragment key={`${s.current?.id}:${group.id}`}>
+                    {group.type === "process" ? (
+                      <ProcessGroup
+                        key={`${s.current?.id}:${group.id}`}
+                        group={group}
+                        annotations={annotations}
+                        working={!!active && active === group.turnId}
+                        timing={s.turnTimings[s.current?.id]?.[group.turnId]}
                       />
-                      {replies.has(turnId) && (
-                        <ReplyActions item={replies.get(turnId)} />
-                      )}
-                    </>
-                  )}
-                </React.Fragment>
-              );
-            })
-          )}
-          {plan?.plan?.length > 0 && (
-            <details className="plan-card" open={!!active}>
-              <summary>
-                <ListChecks size={16} />
-                计划 ·{" "}
-                {plan.plan.filter((p) => p.status === "completed").length}/
-                {plan.plan.length}
-              </summary>
-              {plan.plan.map((p, i) => (
-                <div key={i}>
-                  {p.status === "completed" ? (
-                    <CheckCircle2 size={15} />
-                  ) : p.status === "inProgress" ? (
-                    <LoaderCircle className="spin" size={15} />
-                  ) : (
-                    <span className="step-dot" />
-                  )}
-                  <span className={p.status === "completed" ? "done" : ""}>
-                    {p.step}
-                  </span>
-                </div>
-              ))}
-            </details>
-          )}
-          {active && (
-            <div className="working-status">
-              <span className="pulse-dot" />
-              Codex 正在工作<small>你可以继续补充要求</small>
-            </div>
-          )}
-          <div ref={bottom} />
+                    ) : group.type === "request" ? (
+                      <Question request={group.request} />
+                    ) : (
+                      <Message
+                        key={`${s.current?.id}:${group.id}`}
+                        item={group.item}
+                        annotations={annotations.get(group.item.id)}
+                      />
+                    )}
+                    {turnId && lastGroups.get(turnId) === group.id && (
+                      <>
+                        <TurnFileChanges
+                          turnId={turnId}
+                          items={s.items.filter(
+                            (item) => item.turnId === turnId,
+                          )}
+                        />
+                        {replies.has(turnId) && (
+                          <ReplyActions item={replies.get(turnId)} />
+                        )}
+                      </>
+                    )}
+                  </React.Fragment>
+                );
+              })
+            )}
+            {plan?.plan?.length > 0 && (
+              <details className="plan-card" open={!!active}>
+                <summary>
+                  <ListChecks size={16} />
+                  计划 ·{" "}
+                  {plan.plan.filter((p) => p.status === "completed").length}/
+                  {plan.plan.length}
+                </summary>
+                {plan.plan.map((p, i) => (
+                  <div key={i}>
+                    {p.status === "completed" ? (
+                      <CheckCircle2 size={15} />
+                    ) : p.status === "inProgress" ? (
+                      <LoaderCircle className="spin" size={15} />
+                    ) : (
+                      <span className="step-dot" />
+                    )}
+                    <span className={p.status === "completed" ? "done" : ""}>
+                      {p.step}
+                    </span>
+                  </div>
+                ))}
+              </details>
+            )}
+            {active && (
+              <div className="working-status">
+                <span className="pulse-dot" />
+                Codex 正在工作<small>你可以继续补充要求</small>
+              </div>
+            )}
+            <div ref={bottom} />
+          </div>
         </div>
+        {below && (
+          <button
+            className="scroll-bottom"
+            title="回到最新消息"
+            onClick={() => {
+              follow.current = true;
+              bottom.current?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
+            <ArrowDown size={16} />
+          </button>
+        )}
       </div>
+      {children}
       {!s.loading &&
         groups.some((group) => group.item?.type === "userMessage") && (
           <ConversationNavigation
@@ -742,18 +860,6 @@ export function Conversation() {
             }}
           />
         )}
-      {below && (
-        <button
-          className="scroll-bottom"
-          title="回到最新消息"
-          onClick={() => {
-            follow.current = true;
-            bottom.current?.scrollIntoView({ behavior: "smooth" });
-          }}
-        >
-          <ArrowDown size={16} />
-        </button>
-      )}
     </div>
   );
 }
@@ -862,6 +968,7 @@ export function Composer() {
           )}
           <textarea
             ref={area}
+            rows={2}
             aria-label="消息"
             aria-autocomplete="list"
             aria-expanded={shortcuts.open}

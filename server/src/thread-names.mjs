@@ -191,6 +191,8 @@ export function createThreadNaming({ call, generate, onError }) {
   let running = false;
   const eligible = (thread) =>
     thread &&
+    !thread.parentThreadId &&
+    !thread.source?.subAgent &&
     !thread.ephemeral &&
     !thread.name?.trim() &&
     !thread.path?.includes("/archived_sessions/");
