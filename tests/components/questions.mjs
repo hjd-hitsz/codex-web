@@ -32,6 +32,8 @@ export async function testQuestions(app, requests, setResponse, emit) {
         connected: true,
         current: { id: threadId },
         active: { [threadId]: turnId },
+        turns: {},
+        turnTimings: {},
         items: [],
         questions: [],
         loading: false,
@@ -164,6 +166,141 @@ export async function testQuestions(app, requests, setResponse, emit) {
     assert.equal(record.findAllByType("b").length, 3);
     await act(async () => view.unmount());
 
+    for (const status of ["completed", "failed", "interrupted"]) {
+      await mount({
+        items: [progress, question],
+        draft: "保留主输入框草稿",
+        attachments: [{ id: "question-closure-attachment" }],
+      });
+      await toggle(true);
+      await act(async () =>
+        emit("turn/completed", { threadId, turn: { id: turnId, status } }),
+      );
+      assert.equal(view.root.findAllByType("form").length, 0);
+      assert.equal(
+        history().findAllByProps({ className: "process-content" }).length,
+        1,
+      );
+      record = history().findByProps({
+        className: "activity historical-questions",
+      });
+      assert.equal(record.props.open, undefined);
+      assert(visible().includes("提问已结束"));
+      assert(!visible().includes("需要你的回答"));
+      assert(!visible().includes("回答已发送"));
+      assert.equal(
+        record.findAllByProps({ className: "answer-option recorded-option " })
+          .length,
+        2,
+      );
+      assert.equal(app.get().draft, "保留主输入框草稿");
+      assert.deepEqual(app.get().attachments, [
+        { id: "question-closure-attachment" },
+      ]);
+      await act(async () => view.unmount());
+    }
+
+    await mount({
+      items: [
+        progress,
+        {
+          ...question,
+          id: "unanswered-free-text",
+          text: "请说明浏览器环境，其他检查会继续。",
+          questions: [{ title: "补充浏览器环境" }],
+        },
+      ],
+      draft: "保留补充前草稿",
+      attachments: [{ id: "late-question-attachment" }],
+    });
+    await act(async () =>
+      view.root
+        .findByType("textarea")
+        .props.onChange({ target: { value: "尚未提交的环境信息" } }),
+    );
+    await act(async () =>
+      emit("turn/completed", {
+        threadId,
+        turn: { id: turnId, status: "completed" },
+      }),
+    );
+    assert.equal(view.root.findAllByType("form").length, 0);
+    await toggle(true);
+    record = history().findByProps({
+      className: "activity historical-questions",
+    });
+    assert.equal(record.props.open, undefined);
+    assert(visible().includes("请说明浏览器环境，其他检查会继续。"));
+    await act(async () => record.findByType("button").props.onClick());
+    assert.equal(
+      view.root.findByType("textarea").props.value,
+      "尚未提交的环境信息",
+    );
+    assert(visible().includes("这轮任务已结束"));
+    await act(async () =>
+      view.root.findByType("form").props.onSubmit({ preventDefault() {} }),
+    );
+    assert.equal(
+      requests.findLast((request) => request.method === "turn/start").params
+        .input[0].text,
+      "补充浏览器环境\n回答：尚未提交的环境信息",
+    );
+    assert.equal(view.root.findAllByType("form").length, 0);
+    assert(visible().includes("回答已发送"));
+    assert.equal(app.get().draft, "保留补充前草稿");
+    assert.deepEqual(app.get().attachments, [
+      { id: "late-question-attachment" },
+    ]);
+    await act(async () => view.unmount());
+
+    await mount({
+      active: {},
+      items: [
+        progress,
+        question,
+        {
+          id: "unanswered-history-final",
+          turnId,
+          type: "agentMessage",
+          phase: "final_answer",
+          text: "已完成可独立推进的检查。",
+        },
+      ],
+    });
+    assert.equal(view.root.findAllByType("form").length, 0);
+    assert(visible().includes("已完成可独立推进的检查。"));
+    await toggle(true);
+    record = history().findByProps({
+      className: "activity historical-questions",
+    });
+    assert.equal(record.props.open, undefined);
+    assert(visible().includes("提问已结束"));
+    await act(async () => view.unmount());
+
+    await mount({
+      active: { [threadId]: "new-running-turn" },
+      items: [
+        question,
+        { ...question, id: "running-question", turnId: "new-running-turn" },
+      ],
+      turnTimings: {
+        [threadId]: {
+          [turnId]: {
+            status: "failed",
+            startedAt: null,
+            completedAt: null,
+            durationMs: null,
+          },
+        },
+      },
+    });
+    assert.equal(view.root.findAllByType("form").length, 1);
+    assert.equal(
+      view.root.findAllByProps({ className: "process-history" }).length,
+      2,
+    );
+    await act(async () => view.unmount());
+
     const request = {
       id: "question-layout-sync",
       method: "item/tool/requestUserInput",
@@ -238,6 +375,6 @@ export async function testQuestions(app, requests, setResponse, emit) {
     app.set(original);
   }
   console.log(
-    "PASS 提问位于过程下方、选项保留、提交后独立默认折叠、展开状态稳定、历史回显与同步提问归档",
+    "PASS 提问布局、提交及未答结束后独立折叠、失败中断、历史回显、跨轮次隔离、填写保留与补充回答",
   );
 }

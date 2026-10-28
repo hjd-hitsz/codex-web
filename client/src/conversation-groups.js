@@ -1,9 +1,26 @@
 import { reasoningSummaries } from "./reasoning-summary.js";
 import { asyncQuestionState } from "./question-state.js";
 
-// 每轮活动合并为一个过程区域，待答卡片放在过程下方，已答提问收入过程。
-export function conversationGroups(items, requests = []) {
+// 每轮活动合并为一个过程区域，运行中的待答卡片独立显示，结束提问收入过程。
+export function conversationGroups(items, requests = [], turns = []) {
   const { answered, responses } = asyncQuestionState(items);
+  const closedTurns = new Set(
+    turns
+      .filter(
+        (turn) =>
+          ["completed", "failed", "interrupted"].includes(turn.status) ||
+          Number.isFinite(turn.completedAt),
+      )
+      .map((turn) => turn.id),
+  );
+  for (const item of items)
+    if (
+      item.turnId &&
+      item.type === "agentMessage" &&
+      item.phase === "final_answer" &&
+      !item.questions?.length
+    )
+      closedTurns.add(item.turnId);
   const requestIds = new Set(requests.map((request) => String(request.id)));
   const lastInTurn = new Map();
   for (const item of items)
@@ -62,7 +79,7 @@ export function conversationGroups(items, requests = []) {
       (item.phase === "final_answer" ||
         (item.phase !== "commentary" &&
           lastInTurn.get(item.turnId) === item.id));
-    if (question && !answered.has(item.id)) {
+    if (question && !answered.has(item.id) && !closedTurns.has(item.turnId)) {
       processFor(item).questions.push({ type: "message", id: item.id, item });
     } else if (item.type === "userMessage" || answer) {
       groups.push({ type: "message", id: item.id, item });
@@ -73,7 +90,13 @@ export function conversationGroups(items, requests = []) {
       }
     } else {
       processFor(item).items.push(
-        question ? { ...item, questionAnswers: answered.get(item.id) } : item,
+        question
+          ? {
+              ...item,
+              questionAnswers: answered.get(item.id),
+              questionClosed: closedTurns.has(item.turnId),
+            }
+          : item,
       );
     }
   }

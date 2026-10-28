@@ -333,7 +333,7 @@ function Message({ item, annotations, readOnly = false, cwd }) {
           <RichText text={item.text} annotations={annotations} />
         </MessageAnnotations>
       );
-    if (item.questionAnswers)
+    if (item.questionAnswers || item.questionClosed)
       return <AsyncQuestion item={item} context={context} />;
     return (
       <article className="message assistant-message">
@@ -439,10 +439,12 @@ function AsyncQuestion({ item, context }) {
         {context}
       </QuestionRecord>
     );
-  return (
+  const form = (
     <UserInputForm
       questions={questions}
       isBlocking={false}
+      isCompleted={!!item.questionClosed}
+      draftKey={JSON.stringify([s.current?.id, item.id])}
       disabled={!s.connected || s.busy}
       onSubmit={(answers) =>
         sendMessage(
@@ -463,6 +465,13 @@ function AsyncQuestion({ item, context }) {
         )
       }
     />
+  );
+  return item.questionClosed ? (
+    <QuestionRecord questions={questions} replyForm={form}>
+      {context}
+    </QuestionRecord>
+  ) : (
+    form
   );
 }
 function Question({ request }) {
@@ -637,7 +646,7 @@ function ProcessGroup({ group, working, timing, annotations, readOnly, cwd }) {
 }
 export function ReadOnlyConversation({ items, cwd, turns }) {
   const annotations = annotationContexts(items);
-  const groups = conversationGroups(items);
+  const groups = conversationGroups(items, [], turns);
   return groups.map((group) =>
     group.type === "process" ? (
       <ProcessGroup
@@ -681,6 +690,12 @@ export function Conversation({ children }) {
     s.questions.filter(
       (question) => question.params?.threadId === s.current?.id,
     ),
+    [
+      ...(s.turns[s.current?.id] || []),
+      ...Object.entries(s.turnTimings[s.current?.id] || {}).map(
+        ([id, timing]) => ({ id, ...timing }),
+      ),
+    ],
   );
   const replies = new Map(
     s.items

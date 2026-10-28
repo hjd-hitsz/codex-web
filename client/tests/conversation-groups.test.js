@@ -146,15 +146,10 @@ test("异步提问保持展开，空正文和后续进度均保留问题卡片",
     text: "",
     questions: [{ title: "选择部署方式", options: ["源码", "npm"] }],
   });
-  const groups = conversationGroups([
-    progress,
-    question,
-    tool,
-    { ...answer, id: "next-answer" },
-  ]);
+  const groups = conversationGroups([progress, question, tool]);
   assert.deepEqual(
     groups.map((group) => group.type),
-    ["process", "message", "message"],
+    ["process", "message"],
   );
   assert.equal(groups[1].item, question);
   assert.deepEqual(groups[0].items, [progress, tool]);
@@ -205,11 +200,10 @@ test("同轮多批问题各自收纳，普通引导后过程与待答卡片保�
     }),
     item("steer", "userMessage"),
     tool,
-    answer,
   ]);
   assert.deepEqual(
     groups.map((group) => group.id),
-    ["user", "steer", "process-turn-1", "next-question", "answer"],
+    ["user", "steer", "process-turn-1", "next-question"],
   );
   assert.deepEqual(
     groups[2].items.map((entry) => entry.id),
@@ -280,4 +274,44 @@ test("已回答的提问保持折叠，后续轮次的回答消息归入原问�
     ["user", "process-turn-1", "answer", "process-turn-2"],
   );
   assert.deepEqual(groups[1].items[0].questionAnswers, ["容器\n远程部署"]);
+});
+
+test("未作答的异步提问随所属轮次完成、失败或中断收入过程", () => {
+  const question = item("unanswered", "agentMessage", {
+    phase: "commentary",
+    text: "请补充环境信息。",
+    questions: [{ title: "使用哪种环境？", options: ["本机", "远程"] }],
+  });
+  for (const status of ["completed", "failed", "interrupted"]) {
+    const groups = conversationGroups(
+      [user, progress, question],
+      [],
+      [{ id: "turn-1", status }],
+    );
+    assert.deepEqual(
+      groups.map((group) => group.id),
+      ["user", "process-turn-1"],
+    );
+    const record = groups[1].items.find((entry) => entry.id === question.id);
+    assert.equal(record.questionClosed, true);
+    assert.equal(record.questionAnswers, undefined);
+    assert.deepEqual(record.questions, question.questions);
+    assert.equal(record.text, question.text);
+  }
+});
+
+test("历史最终回答关闭本轮未答问题，其他轮次的待答问题继续展开", () => {
+  const question = item("old-question", "agentMessage", {
+    phase: "commentary",
+    text: "",
+    questions: [{ title: "补充安装目录" }],
+  });
+  const next = { ...question, id: "new-question", turnId: "turn-2" };
+  const groups = conversationGroups([user, question, answer, next]);
+  assert.deepEqual(
+    groups.map((group) => group.id),
+    ["user", "process-turn-1", "answer", "process-turn-2", "new-question"],
+  );
+  assert.equal(groups[1].items[0].questionClosed, true);
+  assert.equal(groups.at(-1).item, next);
 });

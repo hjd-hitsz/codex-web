@@ -1,7 +1,11 @@
 import React, { useId, useState } from "react";
 import { Check, ChevronRight, MessageSquare } from "lucide-react";
 
-export function QuestionRecord({ questions, answers, children }) {
+// 异步提问收纳时表单会重新挂载，页面内按对话和消息保留未提交的填写内容。
+const drafts = new Map();
+
+export function QuestionRecord({ questions, answers, children, replyForm }) {
+  const [replying, setReplying] = useState(false);
   return (
     <details className="activity historical-questions">
       <summary className="activity-summary question-record-summary">
@@ -14,40 +18,49 @@ export function QuestionRecord({ questions, answers, children }) {
       </summary>
       <div className="question-record-content">
         {children}
-        {questions.map((question) => {
-          const values = answers?.[question.id]?.answers;
-          return (
-            <section className="question" key={question.id}>
-              <p>{question.question}</p>
-              {question.options?.map((option, index) => {
-                const selected = values?.includes(option.label);
-                return (
-                  <div
-                    className={
-                      "answer-option recorded-option " +
-                      (selected ? "selected" : "")
-                    }
-                    key={index}
-                  >
-                    {selected && <Check size={15} aria-label="已选择" />}
-                    <span>
-                      <b>{option.label}</b>
-                      {option.description && (
-                        <small>{option.description}</small>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-              {values && (
-                <p className="recorded-answer">
-                  <b>你的回答：</b>
-                  {question.isSecret ? "已提交私密回答" : values.join("\n")}
-                </p>
-              )}
-            </section>
-          );
-        })}
+        {replying && replyForm
+          ? replyForm
+          : questions.map((question) => {
+              const values = answers?.[question.id]?.answers;
+              return (
+                <section className="question" key={question.id}>
+                  <p>{question.question}</p>
+                  {question.options?.map((option, index) => {
+                    const selected = values?.includes(option.label);
+                    return (
+                      <div
+                        className={
+                          "answer-option recorded-option " +
+                          (selected ? "selected" : "")
+                        }
+                        key={index}
+                      >
+                        {selected && <Check size={15} aria-label="已选择" />}
+                        <span>
+                          <b>{option.label}</b>
+                          {option.description && (
+                            <small>{option.description}</small>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {values && (
+                    <p className="recorded-answer">
+                      <b>你的回答：</b>
+                      {question.isSecret ? "已提交私密回答" : values.join("\n")}
+                    </p>
+                  )}
+                </section>
+              );
+            })}
+        {replyForm && !replying && (
+          <div className="request-actions">
+            <button className="secondary" onClick={() => setReplying(true)}>
+              补充回答
+            </button>
+          </div>
+        )}
       </div>
     </details>
   );
@@ -56,20 +69,24 @@ export function QuestionRecord({ questions, answers, children }) {
 export function UserInputForm({
   questions,
   isBlocking = true,
+  isCompleted = false,
+  draftKey,
   disabled = false,
   onSubmit,
 }) {
   const prefix = useId();
-  const [answers, setAnswers] = useState(() =>
-    Object.fromEntries(
-      questions.map((question) => [
-        question.id,
-        {
-          choice: !isBlocking && question.options?.length ? 0 : null,
-          text: "",
-        },
-      ]),
-    ),
+  const [answers, setAnswers] = useState(
+    () =>
+      drafts.get(draftKey) ||
+      Object.fromEntries(
+        questions.map((question) => [
+          question.id,
+          {
+            choice: !isBlocking && question.options?.length ? 0 : null,
+            text: "",
+          },
+        ]),
+      ),
   );
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -98,10 +115,11 @@ export function UserInputForm({
     Object.values(result).some((answer) => !answer.answers[0].trim());
   const locked = disabled || submitting || submitted;
   function update(id, patch) {
-    setAnswers((current) => ({
-      ...current,
-      [id]: { ...current[id], ...patch },
-    }));
+    setAnswers((current) => {
+      const next = { ...current, [id]: { ...current[id], ...patch } };
+      if (draftKey) drafts.set(draftKey, next);
+      return next;
+    });
     setError("");
   }
   async function submit(event) {
@@ -112,7 +130,10 @@ export function UserInputForm({
     try {
       if ((await onSubmit(result)) === false)
         setError("回答发送失败，请检查连接后重试。");
-      else setSubmitted(true);
+      else {
+        drafts.delete(draftKey);
+        setSubmitted(true);
+      }
     } catch (error) {
       setError(error.message || "回答发送失败，请重试。");
     } finally {
@@ -136,12 +157,14 @@ export function UserInputForm({
     >
       <div className="request-title">
         <MessageSquare size={18} />
-        需要你的回答
+        {isCompleted ? "补充回答" : "需要你的回答"}
       </div>
       <p className="request-hint">
-        {isBlocking
-          ? "提交回答后，Codex 将继续处理。"
-          : "Codex 会继续处理，你可以随时补充回答。"}
+        {isCompleted
+          ? "这轮任务已结束，仍可提交补充回答。"
+          : isBlocking
+            ? "提交回答后，Codex 将继续处理。"
+            : "Codex 会继续处理，你可以随时补充回答。"}
       </p>
       {questions.map((question) => {
         const answer = answers[question.id];

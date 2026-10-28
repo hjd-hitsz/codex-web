@@ -643,6 +643,7 @@ function recordTurnTimings(threadId, turns) {
   for (const turn of turns) {
     const previous = timings[turn.id];
     timings[turn.id] = {
+      status: turn.status ?? previous?.status,
       startedAt: turn.startedAt ?? previous?.startedAt ?? null,
       completedAt: turn.completedAt ?? previous?.completedAt ?? null,
       durationMs: turn.durationMs ?? previous?.durationMs ?? null,
