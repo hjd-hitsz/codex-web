@@ -127,7 +127,7 @@ npm run version:prepare -- minor
 
 `version:prepare` 同步包版本、锁文件、变更日志和 README、部署文档中的安装链接，并生成待审阅的发布说明。发布说明面向第三方使用者，只用简短条目说明新增可用能力、具体操作改善和可见问题修复，合并同一功能的相关修改并保留提交链接。回归测试、内部重构、协议适配、构建工具及发布流程维护等开发工作记入提交记录；安装、升级和使用内容统一维护在 README 或部署文档。版本确定后，检查、推送或上传失败均保留该版本并修复重试。
 
-`.github/workflows/release.yml` 在推送版本标签后检查并发布。工作流使用仓库的 `GITHUB_TOKEN` 和 `contents: write` 权限，将 npm 包与 SHA-256 文件完整上传到同版本草稿后再正式发布。发布前需在实际标签的 `GITHUB_REF_NAME` 环境下执行完整检查。标签、发布说明、附件验证及同版本重试步骤统一见[版本管理](versioning.md#准备和发布)。
+`.github/workflows/release.yml` 在推送版本标签后检查并准备 Release。工作流使用仓库的 `GITHUB_TOKEN` 和 `contents: write` 权限，将 npm 包与 SHA-256 文件完整上传到同版本草稿，并下载验证校验和、版本来源及临时全局安装。已配置定时发布的版本保持草稿，由 `.github/workflows/scheduled-release.yml` 到期公开；其他版本直接发布。两个工作流共用发布并发组。独立发布说明保留一级标题，GitHub Release 正文仅上传变更列表；修改说明后，默认分支工作流同步已有 Release 的正文。发布前需在实际标签的 `GITHUB_REF_NAME` 环境下执行完整检查。标签、定时时间、附件验证及同版本重试步骤统一见[版本管理](versioning.md#准备和发布)。
 
 如需改为 npm registry 分发，维护者需先取得包名发布权限并完成 npm 身份验证，再用实际版本替换以下 `X.Y.Z`：
 

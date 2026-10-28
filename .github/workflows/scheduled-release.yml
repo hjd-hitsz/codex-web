@@ -1,0 +1,44 @@
+name: Publish scheduled releases
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/releases/**"
+      - "scripts/publish-release.mjs"
+      - ".github/release-schedule.json"
+      - ".github/workflows/scheduled-release.yml"
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-publish
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Sync release bodies with the documented changes
+        if: github.event_name != 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-release.mjs --sync-notes
+      - name: Publish due releases after verifying assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-release.mjs --scheduled
