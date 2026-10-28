@@ -1,6 +1,3 @@
-const cacheKey = "cx-summary-zh-v1";
-const clientKey = `browser-codex-web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
 export function needsTranslation(text) {
   const prose = text.replace(/```[\s\S]*?```|`[^`]*`/g, "");
   const chinese = prose.match(/[\u3400-\u9fff]/g)?.length || 0;
@@ -8,25 +5,32 @@ export function needsTranslation(text) {
   return english > 2 && english > chinese * 3;
 }
 
-// 合并同一时间进入的摘要，并按原文缓存，避免流式更新和重复打开产生重复请求。
-export function createSummaryTranslator(requestBatch, storage) {
-  let cache;
-  try {
-    cache = new Map(JSON.parse(storage.getItem(cacheKey) || "[]"));
-  } catch {
-    cache = new Map();
-  }
+// 标题优先发送；正文合并短时更新，并最多占用一个请求，给后续标题保留容量。
+export function createSummaryTranslator(requestBatch) {
   const pending = new Map();
-  const queue = [];
-  let timer,
-    running = false;
+  const queue = { title: new Set(), body: new Set() };
+  let timer, timerPriority;
+  let running = 0,
+    bodyRunning = false;
   function schedule() {
-    if (!running && !timer && queue.length) timer = setTimeout(flush, 300);
+    if (running >= 2 || (!queue.title.size && !queue.body.size)) return;
+    const priority = queue.title.size ? "title" : "body";
+    if (priority === "body" && bodyRunning) return;
+    if (timer) {
+      if (timerPriority === "title" || priority === "body") return;
+      clearTimeout(timer);
+    }
+    timerPriority = priority;
+    timer = setTimeout(flush, priority === "title" ? 0 : 100);
   }
   async function flush() {
     timer = null;
-    running = true;
-    const batch = queue.splice(0, 24);
+    const priority = queue.title.size ? "title" : "body";
+    const batch = [...queue[priority]].slice(0, 24);
+    batch.forEach((text) => queue[priority].delete(text));
+    running++;
+    if (priority === "body") bodyRunning = true;
+    schedule();
     try {
       const translations = await requestBatch(batch);
       if (
@@ -36,45 +40,41 @@ export function createSummaryTranslator(requestBatch, storage) {
       )
         throw new Error("翻译结果不完整");
       batch.forEach((text, index) => {
-        cache.set(text, translations[index].trim());
-        pending.get(text).resolve(cache.get(text));
+        pending.get(text).resolve(translations[index].trim());
       });
-      cache = new Map([...cache].slice(-300));
-      try {
-        storage.setItem(cacheKey, JSON.stringify([...cache]));
-      } catch {
-        // 浏览器存储已满时，当前页面仍可使用内存中的译文。
-      }
     } catch (error) {
       batch.forEach((text) => pending.get(text).reject(error));
     } finally {
       batch.forEach((text) => pending.delete(text));
-      running = false;
+      running--;
+      if (priority === "body") bodyRunning = false;
       schedule();
     }
   }
   return {
-    cached(text) {
-      return needsTranslation(text) ? cache.get(text) : text;
-    },
-    translate(text) {
+    translate(text, priority = "body") {
       if (!needsTranslation(text)) return Promise.resolve(text);
-      if (cache.has(text)) return Promise.resolve(cache.get(text));
-      if (pending.has(text)) return pending.get(text).promise;
+      if (pending.has(text)) {
+        if (priority === "title" && queue.body.delete(text)) {
+          queue.title.add(text);
+          schedule();
+        }
+        return pending.get(text).promise;
+      }
       let resolve, reject;
       const promise = new Promise((yes, no) => {
         resolve = yes;
         reject = no;
       });
       pending.set(text, { promise, resolve, reject });
-      queue.push(text);
+      queue[priority].add(text);
       schedule();
       return promise;
     },
   };
 }
 
-export async function translateWithTransmart(texts) {
+export async function translateSummaries(texts) {
   // 机器翻译只处理正文，代码、路径和 Markdown 强调标记在返回后原样恢复。
   const protectedParts = texts.map(() => []);
   const source = texts.map((text, index) =>
@@ -83,36 +83,23 @@ export async function translateWithTransmart(texts) {
       (part) => `<x${protectedParts[index].push(part) - 1}>`,
     ),
   );
-  const response = await fetch("https://transmart.qq.com/api/imt", {
+  const response = await fetch("/api/translate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      header: {
-        fn: "auto_translation",
-        client_key: clientKey,
-        session: "",
-        user: "",
-      },
-      type: "plain",
-      model_category: "normal",
-      source: { lang: "en", text_list: source },
-      target: { lang: "zh" },
-    }),
-    signal: AbortSignal.timeout(10000),
+    body: JSON.stringify({ texts: source }),
+    signal: AbortSignal.timeout(12000),
   });
-  if (!response.ok) throw new Error("翻译服务请求失败，请重试");
+  if (response.status === 404)
+    throw new Error("网页服务尚未加载翻译接口，请等待服务更新后重试");
   const data = await response.json();
-  if (data.header?.ret_code !== "succ")
-    throw new Error("翻译服务暂不可用，请重试");
+  if (!response.ok) throw new Error(data.error || "翻译服务请求失败，请重试");
   if (
-    !Array.isArray(data.auto_translation) ||
-    data.auto_translation.length !== texts.length ||
-    data.auto_translation.some(
-      (text) => typeof text !== "string" || !text.trim(),
-    )
+    !Array.isArray(data.translations) ||
+    data.translations.length !== texts.length ||
+    data.translations.some((text) => typeof text !== "string" || !text.trim())
   )
     throw new Error("翻译结果不完整");
-  return data.auto_translation.map((text, index) => {
+  return data.translations.map((text, index) => {
     const parts = protectedParts[index];
     const restored = new Set();
     const result = text.replace(/<\s*x\s*(\d+)\s*>/gi, (match, id) => {

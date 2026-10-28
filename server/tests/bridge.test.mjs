@@ -280,6 +280,13 @@ test(
       assert.ok((await stat(workspace.cwd)).isDirectory());
     }
     assert.ok(!backendMethods.includes("lan/projectless/prepare"));
+    const translation = await fetch(url + "/api/translate");
+    assert.equal(translation.status, 405);
+    const invalidTranslation = await fetch(url + "/api/translate", {
+      method: "POST",
+      body: JSON.stringify({ texts: [] }),
+    });
+    assert.equal(invalidTranslation.status, 400);
     const health = await fetch(url + "/healthz");
     assert.equal(health.status, 200);
     assert.equal(health.headers.get("cache-control"), "no-store");

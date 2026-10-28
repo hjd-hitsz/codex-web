@@ -33,7 +33,7 @@ npm start
 npm run dev
 ```
 
-打开 Vite 输出的地址。开发服务器将 `/rpc` 和 `/healthz` 代理到网页桥接端口，模型调用和工具执行由 Codex 后端处理。
+打开 Vite 输出的地址。开发服务器将 `/rpc`、`/healthz` 和 `/api/translate` 代理到网页桥接端口，模型调用和工具执行由 Codex 后端处理，摘要翻译由桥接直接调用远程翻译服务。
 
 验证生产构建时，执行 `npm run build`，再通过网页桥接地址访问，默认 `http://127.0.0.1:8766`。生产服务直接读取 `client/dist`，前端更新后重新构建并刷新网页即可；桥接代码更新后需要重启网页服务。
 
@@ -48,6 +48,7 @@ client/
 server/
   src/config.mjs       环境配置和默认目录
   src/server.mjs       HTTP、WebSocket 转发与终端恢复
+  src/summary-translation.mjs  TranSmart 匿名 HTTP API 与本站翻译接口
   src/version.mjs      正式版本与 Git / 安装包构建来源
   tests/               配置和桥接集成测试
 scripts/               后端启动、组件测试、systemd 安装及发布脚本

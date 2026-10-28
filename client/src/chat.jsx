@@ -199,7 +199,7 @@ function Reasoning({ item }) {
   ));
 }
 function ReasoningPart({ title, body }) {
-  const heading = useSummaryTranslation(title);
+  const heading = useSummaryTranslation(title, "title");
   const content = useSummaryTranslation(body);
   const status = heading.pending ? (
     <LoaderCircle size={12} className="spin" aria-label="正在翻译标题" />

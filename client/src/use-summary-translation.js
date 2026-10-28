@@ -1,45 +1,64 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createSummaryTranslator,
-  translateWithTransmart,
+  needsTranslation,
+  translateSummaries,
 } from "./summary-translator";
 
-const translator = createSummaryTranslator(
-  translateWithTransmart,
-  localStorage,
-);
+try {
+  localStorage.removeItem("cx-summary-zh-v1");
+} catch {
+  // 浏览器禁用存储时，翻译继续使用内存中的请求队列。
+}
 
-export function useSummaryTranslation(text) {
-  const [result, setResult] = useState({}),
-    [attempt, retry] = useState(0);
-  const cached = translator.cached(text);
+const translator = createSummaryTranslator(translateSummaries);
+
+export function useSummaryTranslation(text, priority = "body") {
+  const [result, setResult] = useState({});
+  const mounted = useRef(false),
+    inFlight = useRef(false),
+    lastStarted = useRef(0);
+  const required = needsTranslation(text);
   useEffect(() => {
-    if (cached !== undefined) return;
-    let active = true;
-    // 标题和正文均等待流式文本短暂停顿，再进入同一翻译队列。
-    const timer = setTimeout(() => {
-      translator.translate(text).then(
-        (value) => {
-          if (active) setResult({ source: text, value });
-        },
-        (error) => {
-          if (active) setResult({ source: text, error: error.message });
-        },
-      );
-    }, 900);
+    mounted.current = true;
     return () => {
-      active = false;
-      clearTimeout(timer);
+      mounted.current = false;
     };
-  }, [text, attempt, cached]);
-  const current = result.source === text ? result : {};
+  }, []);
+  useEffect(() => {
+    if (!required || inFlight.current || result.source === text) return;
+    // 标题立即入队；正文按固定间隔取最新文本，持续流式更新也会推进翻译。
+    const timer = setTimeout(
+      () => {
+        inFlight.current = true;
+        lastStarted.current = Date.now();
+        translator.translate(text, priority).then(
+          (value) => {
+            inFlight.current = false;
+            if (mounted.current) setResult({ source: text, value });
+          },
+          (error) => {
+            inFlight.current = false;
+            if (mounted.current)
+              setResult({ source: text, error: error.message });
+          },
+        );
+      },
+      priority === "title"
+        ? 0
+        : Math.max(0, lastStarted.current + 300 - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [text, priority, required, result]);
+  // 追加中的摘要继续展示已译前缀，新的译文返回后替换，避免反复闪回等待提示。
+  const current =
+    result.source === text || (result.value && text.startsWith(result.source))
+      ? result
+      : {};
   return {
-    text: cached ?? current.value ?? text,
-    pending: cached === undefined && !current.value && !current.error,
-    error: current.error,
-    retry: () => {
-      setResult({});
-      retry((value) => value + 1);
-    },
+    text: required ? (current.value ?? text) : text,
+    pending: required && !current.value && !current.error,
+    error: required ? current.error : undefined,
+    retry: () => setResult({}),
   };
 }

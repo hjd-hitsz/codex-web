@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createSummaryTranslationHandler } from "./summary-translation.mjs";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -311,8 +312,13 @@ const files = new Map([
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
 ]);
 const staticCache = new Map();
+const translateSummary = createSummaryTranslationHandler();
 const server = http.createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
+  if (path === "/api/translate") {
+    await translateSummary(request, response);
+    return;
+  }
   if (path === "/healthz") {
     response.writeHead(ready ? 200 : 503, {
       "Content-Type": "application/json",

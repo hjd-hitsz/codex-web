@@ -16,7 +16,13 @@ export default defineConfig(({ mode, command }) => {
     );
   return {
     define: { __CODEX_WEB_BUILD__: JSON.stringify(buildInfo) },
-    server: { proxy: { "/rpc": { target, ws: true }, "/healthz": { target } } },
+    server: {
+      proxy: {
+        "/rpc": { target, ws: true },
+        "/healthz": { target },
+        "/api/translate": { target },
+      },
+    },
     build: {
       assetsInlineLimit: Infinity,
       rollupOptions: {
