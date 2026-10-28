@@ -81,7 +81,7 @@ let state = {
   panel: null,
   panelFile: null,
   panelAgent: null,
-  contextOpen: null,
+  contextOpen: false,
   terminalOpen: false,
   terminals: {},
   sidebar: false,

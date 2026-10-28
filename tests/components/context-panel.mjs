@@ -124,13 +124,23 @@ export async function testContextPanel(app, requests, setResponse, emit) {
         draft: "父对话草稿",
         attachments: [{ id: "parent-attachment" }],
         panel: null,
-        contextOpen: true,
+        contextOpen: null,
         active: {},
         turns: {},
         questions: [],
       });
       view = create(React.createElement(app.ContextWorkspace));
     });
+    assert.equal(
+      toggle().props["aria-expanded"],
+      false,
+      "桌面初次打开默认折叠",
+    );
+    assert.equal(
+      view.root.findByProps({ "aria-label": "对话详情" }).props["data-open"],
+      false,
+    );
+    await click("展开对话详情", tools());
     assert.equal(
       view.root.findAllByProps({ title: "/root/agent-a" }).length,
       1,
@@ -344,7 +354,7 @@ export async function testContextPanel(app, requests, setResponse, emit) {
     assert(!text().includes("第二个子代理任务"));
     assert(!text().includes("子代理"));
     await act(async () => app.set({ contextOpen: null }));
-    assert.equal(tools().props["data-open"], true);
+    assert.equal(tools().props["data-open"], false);
     await act(async () => {
       media.matches = false;
       for (const listener of mediaListeners) listener();
@@ -357,6 +367,8 @@ export async function testContextPanel(app, requests, setResponse, emit) {
       for (const listener of mediaListeners) listener();
     });
     assert.equal(tools().props["data-open"], true);
+    await act(async () => app.set({ contextOpen: null }));
+    assert.equal(toggle().props["aria-expanded"], false);
   } finally {
     await act(async () => view?.unmount());
     assert.equal(mediaListeners.size, 0);
@@ -364,6 +376,6 @@ export async function testContextPanel(app, requests, setResponse, emit) {
     globalThis.window = previousWindow;
   }
   console.log(
-    "PASS 常驻四按钮工具栏、展开折叠箭头与断点切换、文件和变更重复点击折叠、详情直接切换和文件草稿保留、子代理只读分页与事件隔离、关闭后回概览、失败重试及重连",
+    "PASS 工作区默认折叠、常驻四按钮工具栏、显式展开与响应式布局、文件和变更重复点击折叠、详情直接切换和文件草稿保留、子代理只读分页与事件隔离、关闭后回概览、失败重试及重连",
   );
 }

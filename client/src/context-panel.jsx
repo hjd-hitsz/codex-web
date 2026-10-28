@@ -277,17 +277,8 @@ function SubAgentConversation({ agent }) {
 export function ContextWorkspace() {
   const s = useStore();
   const [filesOpened, keepFiles] = useState(s.panel === "files");
-  const [wide, setWide] = useState(
-    () => window.matchMedia("(min-width: 1101px)").matches,
-  );
-  const detailsOpen = s.contextOpen ?? wide;
+  const detailsOpen = s.contextOpen === true;
   const agent = s.panelAgent?.parentId === s.current?.id ? s.panelAgent : null;
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 1101px)");
-    const update = () => setWide(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
   useEffect(() => {
     if (s.panel === "files") keepFiles(true);
     if (s.panel === "agent" && !agent) set({ panel: null, panelAgent: null });
@@ -297,7 +288,7 @@ export function ContextWorkspace() {
       <aside
         id="conversation-context"
         className={"context-workspace " + (s.panel ? "showing-panel" : "")}
-        data-open={s.contextOpen}
+        data-open={detailsOpen}
         aria-label="对话详情"
       >
         {s.panel ? (
@@ -328,7 +319,7 @@ export function ContextWorkspace() {
             <ChangesPanel />
           </div>
         )}
-        {s.panel === "agent" && agent && s.contextOpen !== false && (
+        {s.panel === "agent" && agent && detailsOpen && (
           <SubAgentConversation
             key={s.current.id + ":" + agent.id}
             agent={agent}
