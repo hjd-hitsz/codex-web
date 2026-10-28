@@ -3,10 +3,10 @@ import { Check, ChevronRight, MessageSquare } from "lucide-react";
 
 export function QuestionRecord({ questions, answers, children }) {
   return (
-    <details className="request-card historical-questions">
-      <summary className="request-title question-record-summary">
-        <MessageSquare size={18} />
-        提问
+    <details className="activity historical-questions">
+      <summary className="activity-summary question-record-summary">
+        <MessageSquare size={15} />
+        <span>提问</span>
         <small className="request-hint">
           {answers ? "回答已发送" : "提问已结束"}
         </small>

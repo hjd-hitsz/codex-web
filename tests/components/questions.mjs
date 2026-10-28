@@ -87,13 +87,13 @@ export async function testQuestions(app, requests, setResponse, emit) {
     ).params.input;
     assert.equal(view.root.findAllByType("form").length, 0);
     let record = history().findByProps({
-      className: "request-card historical-questions",
+      className: "activity historical-questions",
     });
     assert.equal(record.type, "details");
     assert.equal(record.props.open, undefined);
     assert.equal(
       record.findByType("summary").props.className,
-      "request-title question-record-summary",
+      "activity-summary question-record-summary",
     );
     assert.equal(
       record.findAll(
@@ -152,7 +152,7 @@ export async function testQuestions(app, requests, setResponse, emit) {
     assert(visible().includes("安装配置已检查"));
     await toggle(true);
     record = history().findByProps({
-      className: "request-card historical-questions",
+      className: "activity historical-questions",
     });
     assert.equal(record.props.open, undefined);
     assert(
@@ -209,7 +209,7 @@ export async function testQuestions(app, requests, setResponse, emit) {
     );
     assert.equal(view.root.findAllByType("form").length, 0);
     record = history().findByProps({
-      className: "request-card historical-questions",
+      className: "activity historical-questions",
     });
     assert.equal(record.type, "details");
     assert.equal(record.props.open, undefined);

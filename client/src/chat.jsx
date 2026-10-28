@@ -269,9 +269,11 @@ function Message({ item, annotations }) {
           <RichText text={item.text} annotations={annotations} />
         </MessageAnnotations>
       );
+    if (item.questionAnswers)
+      return <AsyncQuestion item={item} context={context} />;
     return (
       <article className="message assistant-message">
-        {!item.questionAnswers && context}
+        {context}
         <AsyncQuestion item={item} context={context} />
       </article>
     );
