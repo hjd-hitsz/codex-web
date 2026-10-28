@@ -132,4 +132,4 @@ codex-web --help                     # 查看全部命令
 - 网页提示后端未连接：检查 Codex 登录和后端服务状态。可用 `curl http://127.0.0.1:8766/healthz` 检查连接，HTTP 200 表示已就绪，503 表示后端未连接；自定义端口时相应替换。
 - 对话显示被占用：先在持有该对话的客户端结束任务并释放对话，再点击网页的“重试”。历史记录可继续查看，恢复后草稿与附件会保留，由你继续发送。已有后端的回收设置见[对话占用与后端回收](docs/deployment.md#对话占用与后端回收)。
 
-版本变化见[变更日志](CHANGELOG.md)，各版本安装与升级说明见 [GitHub Releases](https://github.com/hjd-hitsz/codex-web/releases)。
+版本变化见[变更日志](CHANGELOG.md)，各版本的功能与修复见 [GitHub Releases](https://github.com/hjd-hitsz/codex-web/releases)。
