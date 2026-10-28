@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import WebSocket, { WebSocketServer } from "ws";
+import { MAX_RPC_MESSAGE_BYTES } from "../src/rpc-transport.mjs";
 
 async function waitFor(read) {
   for (let attempt = 0; attempt < 200; attempt++) {
@@ -64,6 +65,8 @@ async function bridge(t, handle = () => undefined) {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  let stderr = "";
+  child.stderr.on("data", (bytes) => (stderr += bytes));
   t.after(async () => {
     for (const socket of sockets) socket.terminate();
     const exit = once(child, "exit");
@@ -82,6 +85,8 @@ async function bridge(t, handle = () => undefined) {
   return {
     requests,
     respond,
+    logs: () => stderr,
+    disconnect: () => upstream.terminate(),
     unsubscribed: () =>
       requests.filter((request) => request.method === "thread/unsubscribe"),
     notify(method, params) {
@@ -120,6 +125,54 @@ async function close(socket) {
   socket.close();
   await closed;
 }
+
+test("首次提交期间后端断连时返回错误并记录关闭码与请求方法", async (t) => {
+  const app = await bridge(t, (request) => request.method === "turn/start");
+  const client = await app.connect();
+  const { thread } = await app.rpc(client, "thread/start");
+  const text = "仅用于测试的首条文字消息";
+  const failed = assert.rejects(
+    app.rpc(client, "turn/start", {
+      threadId: thread.id,
+      input: [{ type: "text", text }],
+    }),
+    /Codex 后端连接中断，请重试/,
+  );
+  await waitFor(() =>
+    app.requests.some((request) => request.method === "turn/start"),
+  );
+  app.disconnect();
+  await failed;
+  const record = await waitFor(() =>
+    app.logs().match(/App-server disconnected: (\{[^\n]+\})/),
+  );
+  assert.deepEqual(JSON.parse(record[1]), {
+    code: 1006,
+    reason: "",
+    pendingMethods: ["turn/start"],
+  });
+  assert.equal(app.logs().includes(text), false);
+});
+
+test("超出整条消息上限时保留后端连接及其他页面的发送能力", async (t) => {
+  const app = await bridge(t);
+  const first = await app.connect();
+  const second = await app.connect();
+  await assert.rejects(
+    app.rpc(first, "turn/start", {
+      threadId: "oversized-image",
+      input: [{ type: "image", url: "a".repeat(MAX_RPC_MESSAGE_BYTES) }],
+    }),
+    /单次消息过大.*64 MiB/,
+  );
+  assert.equal(
+    app.requests.some((request) => request.method === "turn/start"),
+    false,
+  );
+  await app.rpc(first, "test/after-oversized-message");
+  await app.rpc(second, "test/other-page-still-connected");
+  assert.equal(app.logs().includes("App-server disconnected"), false);
+});
 
 for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
   test(

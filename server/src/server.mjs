@@ -6,6 +6,7 @@ import { gzipSync } from "node:zlib";
 import WebSocket, { WebSocketServer } from "ws";
 import { readConfig } from "./config.mjs";
 import { readVersion } from "./version.mjs";
+import { MAX_RPC_MESSAGE_BYTES, sendRpcText } from "./rpc-transport.mjs";
 import { createThreadNaming, generateThreadName } from "./thread-names.mjs";
 import { changesForPath, undoFileChanges } from "./file-undo.mjs";
 import {
@@ -48,8 +49,7 @@ let ready = false;
 let sequence = 1;
 
 function send(client, message) {
-  if (client.readyState === WebSocket.OPEN)
-    client.send(JSON.stringify(message));
+  sendRpcText(client, JSON.stringify(message));
 }
 function broadcast(message) {
   for (const client of clients.clients) send(client, message);
@@ -61,7 +61,13 @@ function callUpstream(method, params) {
       pending.delete(id);
       reject(new Error("恢复对话超时"));
     }, 120000);
-    pending.set(id, { resolve, reject, timer, threadId: params.threadId });
+    pending.set(id, {
+      resolve,
+      reject,
+      timer,
+      method,
+      threadId: params.threadId,
+    });
     send(upstream, { id, method, params });
   });
 }
@@ -103,7 +109,7 @@ function releaseUnusedThreads() {
         pending.delete(id);
         reject(new Error("取消对话订阅超时"));
       }, 120000);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { resolve, reject, timer, method: "thread/unsubscribe" });
       send(upstream, {
         id,
         method: "thread/unsubscribe",
@@ -280,7 +286,17 @@ function connect() {
   upstream.on("error", (error) =>
     console.error("App-server connection:", error.message),
   );
-  upstream.on("close", () => {
+  upstream.on("close", (code, reason) => {
+    console.error(
+      "App-server disconnected:",
+      JSON.stringify({
+        code,
+        reason: reason.toString(),
+        pendingMethods: [
+          ...new Set([...pending.values()].map((request) => request.method)),
+        ],
+      }),
+    );
     ready = false;
     threadNaming.clear();
     for (const request of pending.values()) {
@@ -388,6 +404,9 @@ clients.on("connection", (client) => {
   client.on("pong", () => {
     client.alive = true;
   });
+  client.on("error", (error) =>
+    console.error("Browser connection:", error.message),
+  );
   client.on("close", () => {
     for (const owners of subscriptions.values()) owners.delete(client);
     releaseUnusedThreads();
@@ -515,6 +534,17 @@ clients.on("connection", (client) => {
           config: { ...message.params?.config, thread_unload_delay_secs: 0 },
         };
       const id = sequence++;
+      const forwarded = JSON.stringify({ ...message, id });
+      if (Buffer.byteLength(forwarded) > MAX_RPC_MESSAGE_BYTES) {
+        send(client, {
+          id: message.id,
+          error: {
+            code: -32600,
+            message: "单次消息过大（最多 64 MiB），请减少附件后重试。",
+          },
+        });
+        return;
+      }
       const processId =
         message.method === "command/exec" && message.params?.processId;
       if (processId) {
@@ -571,7 +601,7 @@ clients.on("connection", (client) => {
           return;
         }
       }
-      send(upstream, { ...message, id });
+      sendRpcText(upstream, forwarded);
     } else if (message.id !== undefined && questions.has(String(message.id))) {
       send(upstream, message);
       questions.delete(String(message.id));

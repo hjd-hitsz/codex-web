@@ -13,6 +13,7 @@ import { testFilePanel } from "./file-panel.mjs";
 import { testFileChanges } from "./file-changes.mjs";
 import { testProcessTiming } from "./process-timing.mjs";
 import { testQuestions } from "./questions.mjs";
+import { testConnectionLifecycle } from "./connection-lifecycle.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -110,6 +111,13 @@ await testMermaid(app);
       requests,
       (respond) => (responseFor = respond),
       (method, params) => socket.emit(method, params),
+    );
+    await testConnectionLifecycle(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+      () => socket,
     );
   } finally {
     responseFor = previousResponse;

@@ -135,6 +135,7 @@ export function persist(key, value) {
 let socket,
   seq = 1,
   opening = 0,
+  bootRevision = 0,
   initialized = false;
 let pendingForks = saved("cx-pending-forks", []);
 const deletedThreads = new Set();
@@ -164,9 +165,18 @@ let listing = 0;
 export const listThreads = (params) => threadOrdering.list(params);
 export function rpc(method, params = {}, timeout = 120000) {
   return new Promise((resolve, reject) => {
-    if (!state.connected)
+    if (!state.connected || socket?.readyState !== WebSocket.OPEN)
       return reject(new Error("与电脑的连接尚未就绪，正在自动重连。"));
     const id = seq++;
+    const message = JSON.stringify({
+      id,
+      method,
+      params: fullAccessParams(method, params),
+    });
+    if (new TextEncoder().encode(message).byteLength > 64 * 1024 * 1024)
+      return reject(
+        new Error("单次消息过大（最多 64 MiB），请减少附件后重试。"),
+      );
     const timer = timeout
       ? setTimeout(() => {
           pending.delete(id);
@@ -181,9 +191,7 @@ export function rpc(method, params = {}, timeout = 120000) {
       threadId: params.threadId,
       opening,
     });
-    socket.send(
-      JSON.stringify({ id, method, params: fullAccessParams(method, params) }),
-    );
+    socket.send(message);
   });
 }
 export function respond(request, result, error) {
@@ -208,10 +216,12 @@ export function respond(request, result, error) {
   }
 }
 function connect() {
-  socket = new WebSocket(
+  const connection = new WebSocket(
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`,
   );
-  socket.onmessage = async (e) => {
+  socket = connection;
+  connection.onmessage = async (e) => {
+    if (socket !== connection) return;
     const m = JSON.parse(e.data);
     if (m.method === "lan/state") {
       const was = state.connected;
@@ -286,24 +296,33 @@ function connect() {
     handle(m);
     for (const fn of eventListeners) fn(m);
   };
-  socket.onclose = () => {
+  connection.onclose = () => {
+    if (socket !== connection) return;
+    bootRevision++;
     set({ connected: false });
     for (const p of pending.values()) {
       clearTimeout(p.timer);
       p.reject(new Error("连接中断，正在重连；已提交的任务会在电脑上继续。"));
     }
     pending.clear();
-    setTimeout(connect, 1500);
+    setTimeout(() => {
+      if (socket === connection && !state.connected) connect();
+    }, 1500);
   };
-  socket.onerror = () => {};
+  connection.onerror = () => {};
 }
 async function boot() {
+  const revision = ++bootRevision;
+  const epoch = opening;
+  const id = state.current?.id || localStorage.getItem("cx-current");
+  const current = () => revision === bootRevision && state.connected;
   try {
     const [models, account, config] = await Promise.all([
       rpc("model/list"),
       rpc("account/read", { refreshToken: false }),
       rpc("config/read", { includeLayers: false }),
     ]);
+    if (!current()) return;
     const cfg = config.config || {};
     set({
       models: models.data,
@@ -321,20 +340,26 @@ async function boot() {
       booting: false,
     });
     await loadThreads(false);
-    const id = state.current?.id || localStorage.getItem("cx-current");
-    if (id)
-      await openThread(id, { preserveServiceTier: state.current?.id === id });
-    else set({ draft: localStorage.getItem("cx-draft-new") || "" });
+    if (!current()) return;
+    // 初始化只恢复启动时的选择，保留期间新建、发送和切换的对话。
+    if (epoch === opening && !state.busy) {
+      if (id)
+        await openThread(id, { preserveServiceTier: state.current?.id === id });
+      else if (!state.current)
+        set({ draft: localStorage.getItem("cx-draft-new") || "" });
+    }
+    if (!current()) return;
     rpc("account/rateLimits/read")
-      .then((usage) => set({ usage }))
+      .then((usage) => current() && set({ usage }))
       .catch(() => {});
     if (!initialized) {
       initialized = true;
       loadSkills().catch(() => {});
     }
   } catch (e) {
+    if (!current()) return;
     set({ booting: false });
-    report(e);
+    if (epoch === opening) report(e);
   }
 }
 export async function loadThreads(more = false) {
@@ -837,6 +862,7 @@ export async function sendMessage(
       state.threadAccess.status !== "ready")
   )
     return false;
+  const epoch = opening;
   set({ busy: true, error: "" });
   let thread;
   try {
@@ -917,7 +943,7 @@ export async function sendMessage(
           threadAccess: { threadId: thread.id, status: "blocked" },
           error: "",
         });
-    } else report(e);
+    } else if (epoch === opening) report(e);
     return false;
   } finally {
     set({ busy: false });
