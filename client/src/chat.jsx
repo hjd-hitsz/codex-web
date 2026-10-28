@@ -59,6 +59,7 @@ import { annotationContexts } from "./annotations";
 import { AnnotatedUserText, MessageAnnotations } from "./message-annotations";
 import { TurnFileChanges } from "./turn-file-changes";
 import { turnElapsedMs, formatElapsed } from "./turn-timing";
+import { ConversationNavigation } from "./conversation-navigation";
 export { RichText } from "./rich-text";
 function Content({ content }) {
   return (
@@ -287,7 +288,11 @@ function Message({ item, annotations }) {
     ) : null;
   if (item.type === "userMessage")
     return (
-      <article className="message user-message">
+      <article
+        className="message user-message"
+        data-message-id={item.id}
+        tabIndex={-1}
+      >
         <div className="user-bubble">
           <Content content={item.content} />
         </div>
@@ -592,6 +597,7 @@ export function Conversation() {
   }
   useEffect(() => {
     follow.current = true;
+    setBelow(false);
   }, [s.current?.id]);
   useEffect(() => {
     if (follow.current) bottom.current?.scrollIntoView({ block: "end" });
@@ -724,6 +730,18 @@ export function Conversation() {
           <div ref={bottom} />
         </div>
       </div>
+      {!s.loading &&
+        groups.some((group) => group.item?.type === "userMessage") && (
+          <ConversationNavigation
+            key={s.current?.id}
+            groups={groups}
+            scroll={scroll}
+            onNavigate={() => {
+              follow.current = false;
+              setBelow(true);
+            }}
+          />
+        )}
       {below && (
         <button
           className="scroll-bottom"

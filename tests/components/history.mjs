@@ -71,7 +71,13 @@ export async function testHistory(app, requests, setResponse, emit) {
     await act(async () => {
       await app.openThread(thread.id);
       view = create(React.createElement(app.Conversation), {
-        createNodeMock: () => ({ scrollIntoView: () => scrolls++ }),
+        createNodeMock: () => ({
+          scrollIntoView: () => scrolls++,
+          querySelectorAll: () => [],
+          getBoundingClientRect: () => ({ top: 0 }),
+          addEventListener() {},
+          removeEventListener() {},
+        }),
       });
     });
     assert.deepEqual(

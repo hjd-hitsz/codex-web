@@ -15,6 +15,7 @@ import { testProcessTiming } from "./process-timing.mjs";
 import { testQuestions } from "./questions.mjs";
 import { testConnectionLifecycle } from "./connection-lifecycle.mjs";
 import { testHistory } from "./history.mjs";
+import { testMessageNavigation } from "./message-navigation.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -77,6 +78,7 @@ await testMermaid(app);
       (respond) => (responseFor = respond),
       (method, params) => socket.emit(method, params),
     );
+    await testMessageNavigation(app);
     await testThreadAccess(
       app,
       requests,

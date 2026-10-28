@@ -608,6 +608,182 @@ p {
   scrollbar-color: var(--border) transparent;
   overscroll-behavior: contain;
 }
+.conversation-navigation {
+  position: absolute;
+  inset: 32px 10px 20px auto;
+  width: min(360px, calc(100% - 20px));
+  z-index: 8;
+  pointer-events: none;
+}
+.conversation-navigation[data-expanded="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0 26px 0 auto;
+  width: 18px;
+  pointer-events: auto;
+}
+.conversation-navigation-trigger {
+  display: flex;
+  flex-direction: column;
+  width: 36px;
+  margin-left: auto;
+  padding: 8px 4px;
+  gap: 10px;
+  border-radius: 7px;
+  color: var(--muted);
+  background: var(--bg);
+  pointer-events: auto;
+}
+.conversation-navigation-trigger small {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.conversation-navigation-marks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: 24px;
+}
+.conversation-navigation-marks > span {
+  width: 15px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--muted);
+  opacity: 0.4;
+}
+.conversation-navigation-marks > [data-active="true"] {
+  width: 24px;
+  background: var(--fg);
+  opacity: 1;
+}
+.conversation-navigation-menu {
+  position: absolute;
+  top: 0;
+  right: 40px;
+  width: calc(100% - 40px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+.conversation-navigation-heading {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 8px;
+  padding: 0 2px 8px 6px;
+}
+.conversation-navigation-heading strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.conversation-navigation-heading > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.conversation-navigation-heading > button {
+  margin-left: auto;
+  padding: 5px;
+  border-radius: 5px;
+}
+.conversation-navigation-search {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 7px;
+  padding: 6px 9px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+}
+.conversation-navigation-search:focus-within {
+  border-color: var(--muted);
+}
+.conversation-navigation-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+}
+.conversation-navigation-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.conversation-navigation-entries li + li {
+  margin-top: 2px;
+}
+.conversation-navigation-entries button {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 19px;
+}
+.conversation-navigation-entries [aria-current="location"] {
+  background: var(--selected);
+}
+.conversation-navigation-number {
+  min-width: 22px;
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.conversation-navigation-label {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.conversation-navigation-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 12px 6px;
+  margin: 0;
+}
+.conversation-wrap:has(.conversation-navigation) .message-column {
+  padding-right: 62px;
+}
+@media (max-width: 800px) {
+  .conversation-navigation {
+    inset: 12px 7px 12px auto;
+    width: min(360px, calc(100% - 14px));
+  }
+  .conversation-navigation-trigger {
+    width: 30px;
+    gap: 3px;
+  }
+  .conversation-navigation-marks {
+    display: none;
+  }
+  .conversation-wrap:has(.conversation-navigation) .message-column {
+    padding-right: 46px;
+  }
+}
 .message-column {
   width: 100%;
   margin: 0;

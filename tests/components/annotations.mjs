@@ -55,6 +55,10 @@ export async function testAnnotations(app, requests, setResponse) {
       innerText: "回复全文",
       ownerDocument,
       scrollIntoView() {},
+      querySelectorAll: () => [],
+      getBoundingClientRect: () => ({ top: 0 }),
+      addEventListener() {},
+      removeEventListener() {},
     }),
   };
   let selection = { rangeCount: 0 };
