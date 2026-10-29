@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import codexWebIcon from "./assets/codex-web.svg";
 import {
   ArrowUp,
   ArrowDown,
@@ -750,7 +751,7 @@ export function Conversation({ children }) {
       <div className="conversation-layout">
         <div className="welcome">
           <div className="welcome-symbol">
-            <span>⌘</span>
+            <img src={codexWebIcon} width={56} height={56} alt="" />
           </div>
           <h1>今天想完成什么？</h1>
           <p>从一个想法开始，把工作交给 Codex。</p>

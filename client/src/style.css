@@ -238,6 +238,10 @@ p {
   gap: 9px;
   letter-spacing: -0.4px;
 }
+.brand img {
+  display: block;
+  flex: none;
+}
 .brand strong {
   font-size: 18px;
   font-weight: 600;
@@ -565,16 +569,12 @@ p {
 .welcome-symbol {
   width: 56px;
   height: 56px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   margin-bottom: 22px;
-  background: var(--subtle);
 }
-.welcome-symbol span {
-  font-size: 32px;
-  font-family: Arial;
+.welcome-symbol img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .welcome h1 {
   font-size: 28px;
@@ -3454,7 +3454,6 @@ select option {
   .welcome-symbol {
     width: 48px;
     height: 48px;
-    border-radius: 15px;
     margin-bottom: 19px;
   }
   .welcome h1 {

@@ -25,7 +25,6 @@ import {
   Monitor,
   RefreshCw,
   MessageSquare,
-  Command,
   LoaderCircle,
   ArrowLeft,
   ExternalLink,
@@ -69,6 +68,7 @@ import { ProjectGroup } from "./project-group";
 import { ContextWorkspace } from "./context-panel";
 import { CommandDialog, commandTitles } from "./command-dialog";
 import { isCompacting } from "./compaction";
+import codexWebIcon from "./assets/codex-web.svg";
 
 function ThreadMenu({ thread, onClose }) {
   const s = useStore();
@@ -201,7 +201,7 @@ function Sidebar() {
       <aside className={"sidebar " + (s.sidebar ? "mobile-open" : "")}>
         <div className="sidebar-top">
           <button className="brand" onClick={() => newChat()}>
-            <Command size={21} />
+            <img src={codexWebIcon} width={24} height={24} alt="" />
             <strong>Codex</strong>
             <span>Web</span>
           </button>

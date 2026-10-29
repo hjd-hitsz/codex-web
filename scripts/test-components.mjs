@@ -30,7 +30,7 @@ try {
     format: "esm",
     outfile: cache + "/client.mjs",
     external: ["react", "react-dom/client"],
-    loader: { ".css": "empty" },
+    loader: { ".css": "empty", ".svg": "dataurl" },
     plugins: [
       {
         name: "editor-fixture",
