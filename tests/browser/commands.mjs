@@ -55,7 +55,8 @@ function fixture() {
     ),
     compactRequest;
   let holdCompact = false,
-    compactNumber = 0;
+    compactNumber = 0,
+    legacy = false;
   const compactState = (entry) => {
     compaction = entry;
     sessionStorage.setItem("compact-fixture", JSON.stringify(entry));
@@ -69,6 +70,11 @@ function fixture() {
     },
     holdCompact(value) {
       holdCompact = value;
+    },
+    disconnect() {
+      legacy = true;
+      socket.readyState = 3;
+      socket.onclose();
     },
     acknowledgeCompact() {
       socket.onmessage({
@@ -106,8 +112,7 @@ function fixture() {
             type: "contextCompaction",
           },
         });
-      const error =
-        status === "failed" ? { message: "模拟整理失败，草稿已保留。" } : null;
+      const error = status === "failed" ? { message: "模拟整理失败" } : null;
       socket.emit("turn/completed", {
         threadId: thread.id,
         turn: { id: turnId, status, error, completedAt: Date.now() / 1000 },
@@ -142,13 +147,16 @@ function fixture() {
               compaction?.status === "running"
                 ? { [thread.id]: compaction.turnId }
                 : {},
-            compactions: compaction ? { [thread.id]: compaction } : {},
+            ...(!legacy && {
+              compactions: compaction ? { [thread.id]: compaction } : {},
+            }),
             questions: [],
           }),
         0,
       );
     }
     emit(method, params) {
+      if (this.readyState !== 1) return;
       this.onmessage({ data: JSON.stringify({ method, params }) });
     }
     send(raw) {
@@ -157,6 +165,10 @@ function fixture() {
       requests.push(request);
       let result = {},
         error;
+      if (method === "lan/compaction/check") {
+        if (legacy) error = { code: -32601, message: "Unknown method" };
+        else result = { compaction };
+      }
       if (method === "model/list")
         result = {
           data: [
@@ -191,12 +203,19 @@ function fixture() {
       if (method === "thread/turns/list")
         result = {
           data: [
-            ...(compaction?.status === "running"
+            ...(compaction?.turnId
               ? [
                   {
                     id: compaction.turnId,
-                    status: "inProgress",
+                    status:
+                      compaction.status === "running"
+                        ? "inProgress"
+                        : compaction.status,
                     startedAt: compaction.startedAt,
+                    completedAt: compaction.completedAt,
+                    items: [
+                      { type: "contextCompaction", id: "compact-history" },
+                    ],
                   },
                 ]
               : []),
@@ -851,6 +870,54 @@ try {
     "失败后继续保留的草稿",
   );
   await screenshot("compact-retried-completed");
+  await click('button[title="关闭整理状态"]');
+  await evaluate("commandFixture.holdCompact(false)");
+  await submit("/compact");
+  await evaluate("commandFixture.startCompact()");
+  await type("后台断线后继续编辑的草稿");
+  assert.equal(
+    await evaluate("document.querySelector('.compaction-status p') === null"),
+    true,
+  );
+  const background = await call("Target.createTarget", { url: "about:blank" });
+  await call("Target.activateTarget", { targetId: background.targetId });
+  await waitFor("document.visibilityState === 'hidden'");
+  const checkCount = await evaluate(
+    `commandFixture.requests.filter(request => request.method === 'lan/compaction/check').length`,
+  );
+  await evaluate("commandFixture.disconnect()");
+  await screenshot("compact-reconnecting");
+  await evaluate("commandFixture.finishCompact()");
+  await call("Target.activateTarget", { targetId });
+  await page("Page.bringToFront", {});
+  await waitFor("document.visibilityState === 'visible'");
+  await waitFor(
+    `document.querySelector('.compaction-status')?.textContent.includes('上下文整理完成') && document.querySelector('button[aria-label="发送消息"]')?.disabled === false`,
+  );
+  assert.equal(
+    await evaluate(
+      `document.querySelector('textarea[aria-label="消息"]').value`,
+    ),
+    "后台断线后继续编辑的草稿",
+  );
+  assert.equal(
+    await evaluate(
+      `commandFixture.requests.filter(request => request.method === 'lan/compaction/check').length`,
+    ),
+    checkCount,
+    "旧桥接不依赖新增状态接口",
+  );
+  await screenshot("compact-background-recovered");
+  await call("Target.closeTarget", { targetId: background.targetId });
+  await page("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await evaluate('document.documentElement.dataset.theme="dark"');
+  await pause(350);
+  await screenshot("compact-background-recovered-dark-390");
   const proof = {
     build: JSON.parse(await readFile(join(root, "build-info.json"), "utf8")),
     data: "隔离 WebSocket 模拟后端",
@@ -862,7 +929,7 @@ try {
     JSON.stringify({
       passed: true,
       output,
-      screenshots: 19,
+      screenshots: 22,
       layouts: layouts.length,
     }),
   );

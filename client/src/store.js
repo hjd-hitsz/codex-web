@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import { fullAccessParams } from "./execution-policy";
 import { modelServiceTiers, resolveServiceTier } from "./service-tier";
 import { inputRequestItem } from "./question-state";
-import { isCompacting } from "./compaction";
+import { isCompacting, recoverCompaction } from "./compaction";
 import {
   createThreadOrdering,
   projectGroups,
@@ -14,6 +14,8 @@ import {
 const listeners = new Set(),
   eventListeners = new Set(),
   pending = new Map();
+const checkingCompactions = new Map();
+let compactionTracking = false;
 const saved = (key, fallback) => {
   try {
     return JSON.parse(localStorage.getItem(key)) ?? fallback;
@@ -239,6 +241,7 @@ function connect() {
     const m = JSON.parse(e.data);
     if (m.method === "lan/state") {
       const was = state.connected;
+      compactionTracking = Object.hasOwn(m.params, "compactions");
       const undoneFiles = { ...state.undoneFiles };
       for (const file of m.params.undoneFiles || [])
         undoneFiles[JSON.stringify([file.threadId, file.turnId, file.path])] =
@@ -269,6 +272,10 @@ function connect() {
       if (m.params.terminals?.[terminalId]?.running === false)
         closeTerminal(terminalId);
       for (const fn of eventListeners) fn(m);
+      if (m.params.ready)
+        for (const [threadId, entry] of Object.entries(state.compactions))
+          if (isCompacting(entry) && entry.status !== "starting")
+            refreshCompaction(threadId).catch(() => {});
       if (m.params.ready && !was) boot();
       return;
     }
@@ -279,6 +286,7 @@ function connect() {
         pending.delete(m.id);
         if (m.error) {
           const error = new Error(m.error.message);
+          error.code = m.error.code;
           const archived = /^(?:session|thread)\s+(\S+)\s+is archived\b/i.exec(
             error.message,
           );
@@ -732,7 +740,7 @@ function handle({ method, params: p = {} }) {
   }
   if (method === "turn/started") {
     const entry = state.compactions[p.threadId];
-    if (isCompacting(entry) && !entry.turnId)
+    if (entry?.status === "starting" && !entry.turnId)
       set({
         compactions: {
           ...state.compactions,
@@ -1179,6 +1187,86 @@ export async function compact() {
     if (state.current?.id !== t.id) return false;
     throw error;
   }
+}
+export function refreshCompaction(threadId = state.current?.id) {
+  const entry = state.compactions[threadId];
+  if (!state.connected || !isCompacting(entry)) return Promise.resolve(entry);
+  if (
+    [...pending.values()].some(
+      (request) =>
+        request.threadId === threadId &&
+        request.method === "thread/compact/start",
+    )
+  )
+    return Promise.resolve(entry);
+  const existing = checkingCompactions.get(threadId);
+  if (existing?.entry === entry && existing.connection === socket)
+    return existing.promise;
+  const connection = socket;
+  const revision = turnRevisions.get(threadId);
+  const current = () =>
+    socket === connection &&
+    state.compactions[threadId] === entry &&
+    turnRevisions.get(threadId) === revision;
+  const checking = (async () => {
+    let recovered;
+    let activeFromHistory;
+    let readHistory = false;
+    if (compactionTracking) {
+      try {
+        const result = await rpc("lan/compaction/check", { threadId });
+        recovered = result.compaction;
+      } catch (error) {
+        if (error.code !== -32601) throw error;
+      }
+    }
+    if (!recovered && current()) {
+      const { thread } = await rpc("thread/read", {
+        threadId,
+        includeTurns: false,
+      });
+      const turns = [];
+      let cursor;
+      do {
+        const page = await rpc("thread/turns/list", {
+          threadId,
+          limit: 100,
+          itemsView: "full",
+          ...(cursor ? { cursor } : {}),
+        });
+        if (!current()) return state.compactions[threadId];
+        turns.push(...page.data);
+        cursor = page.nextCursor;
+      } while (cursor);
+      recovered = recoverCompaction(entry, thread, turns);
+      activeFromHistory = turns.find(
+        (turn) => turn.status === "inProgress",
+      )?.id;
+      readHistory = true;
+    }
+    if (current() && recovered) {
+      const active = { ...state.active };
+      if (readHistory && activeFromHistory)
+        active[threadId] = activeFromHistory;
+      else if (
+        readHistory ||
+        (!isCompacting(recovered) &&
+          recovered.status !== "unconfirmed" &&
+          active[threadId] === recovered.turnId)
+      )
+        delete active[threadId];
+      set({
+        compactions: { ...state.compactions, [threadId]: recovered },
+        active,
+      });
+    }
+    return state.compactions[threadId];
+  })().finally(() => {
+    if (checkingCompactions.get(threadId)?.promise === checking)
+      checkingCompactions.delete(threadId);
+  });
+  checkingCompactions.set(threadId, { entry, connection, promise: checking });
+  return checking;
 }
 export async function review() {
   if (isCompacting(state.compactions[state.current?.id]))

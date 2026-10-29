@@ -21,6 +21,7 @@ import { testMessageNavigation } from "./message-navigation.mjs";
 import { testContextPanel } from "./context-panel.mjs";
 import { testCommands } from "./commands.mjs";
 import { testCompaction } from "./compaction.mjs";
+import { testCompactionRecovery } from "./compaction-recovery.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -88,6 +89,13 @@ await testMermaid(app);
       requests,
       (respond) => (responseFor = respond),
       (method, params) => socket.emit(method, params),
+    );
+    await testCompactionRecovery(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+      () => socket,
     );
     await testHistory(
       app,

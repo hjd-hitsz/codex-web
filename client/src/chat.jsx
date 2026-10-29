@@ -35,6 +35,7 @@ import {
   sendMessage,
   refreshThreadAccess,
   compact,
+  refreshCompaction,
   rpc,
   stop,
   report,
@@ -869,9 +870,7 @@ export function Conversation({ children }) {
               <div className="working-status">
                 <span className="pulse-dot" />
                 {compacting ? "正在整理上下文" : "Codex 正在工作"}
-                <small>
-                  {compacting ? "完成后可继续发送" : "你可以继续补充要求"}
-                </small>
+                {!compacting && <small>你可以继续补充要求</small>}
               </div>
             )}
           </div>
@@ -1034,7 +1033,7 @@ export function Composer() {
             }
             placeholder={
               compacting
-                ? "正在整理上下文，可先编辑草稿…"
+                ? "正在整理上下文…"
                 : active
                   ? "补充说明，或等待 Codex 完成…"
                   : "描述任务，@ 引用文件，/ 使用命令…"
@@ -1184,6 +1183,22 @@ function CompactionStatus({ entry }) {
   const s = useStore();
   const working = isCompacting(entry);
   const [checking, setChecking] = useState(false);
+  const threadId = s.current?.id;
+  useEffect(() => {
+    if (!working || !s.connected) return;
+    const check = () => {
+      if (document.visibilityState === "hidden") return;
+      refreshCompaction(threadId).catch(() => {});
+    };
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    const timer = setInterval(check, 5000);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [threadId, entry.id, working, s.connected]);
   const titles = {
     starting: "正在提交上下文整理…",
     running: "正在整理上下文…",
@@ -1208,16 +1223,11 @@ function CompactionStatus({ entry }) {
         <AlertCircle size={17} />
       )}
       <div className="compaction-status-content">
-        <strong>{titles[entry.status]}</strong>
+        <strong>
+          {titles[entry.status]}
+          {entry.status === "failed" && entry.error ? `：${entry.error}` : ""}
+        </strong>
         <ProcessDuration timing={entry} working={working} />
-        <p>
-          {entry.error ||
-            (working
-              ? "完成后可继续发送，草稿和附件已保留。"
-              : entry.status === "completed"
-                ? "可以继续发送消息。"
-                : "草稿和附件已保留，可以重新整理。")}
-        </p>
       </div>
       {entry.status === "reconnecting" ? (
         <button
@@ -1226,7 +1236,7 @@ function CompactionStatus({ entry }) {
           onClick={async () => {
             setChecking(true);
             try {
-              await rpc("lan/compaction/check", { threadId: s.current.id });
+              await refreshCompaction(threadId);
             } catch (error) {
               report(error);
             } finally {

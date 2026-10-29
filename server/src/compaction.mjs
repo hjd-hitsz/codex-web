@@ -1,5 +1,5 @@
-export const isCompacting = (entry) =>
-  ["starting", "running", "reconnecting"].includes(entry?.status);
+import { isCompacting } from "./compaction-state.mjs";
+export { isCompacting } from "./compaction-state.mjs";
 
 // 手动整理的 RPC 响应仅确认提交；轮次结束才释放整理占用。
 export function createCompactions(notify, now = () => Date.now() / 1000) {
@@ -36,7 +36,11 @@ export function createCompactions(notify, now = () => Date.now() / 1000) {
     event(method, p) {
       const entry = entries.get(p.threadId);
       if (!isCompacting(entry)) return;
-      if (method === "turn/started" && !entry.turnId)
+      if (
+        method === "turn/started" &&
+        entry.status === "starting" &&
+        !entry.turnId
+      )
         update(p.threadId, { ...entry, turnId: p.turn.id, status: "running" });
       if (
         (method === "item/started" || method === "item/completed") &&

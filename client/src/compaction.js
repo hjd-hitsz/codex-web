@@ -1,2 +1,4 @@
-export const isCompacting = (entry) =>
-  ["starting", "running", "reconnecting"].includes(entry?.status);
+export {
+  isCompacting,
+  recoverCompaction,
+} from "../../server/src/compaction-state.mjs";

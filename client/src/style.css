@@ -3819,7 +3819,7 @@ select option {
 
 .compaction-status {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.55rem;
   margin: 0 0 0.5rem;
   padding: 0.65rem 0.75rem;
@@ -3830,7 +3830,6 @@ select option {
 }
 .compaction-status > svg {
   flex: none;
-  margin-top: 0.15rem;
 }
 .compaction-status-content {
   flex: 1;
@@ -3843,10 +3842,6 @@ select option {
 .compaction-status .process-duration {
   margin-left: 0.55rem;
   white-space: nowrap;
-}
-.compaction-status p {
-  margin: 0.2rem 0 0;
-  color: var(--muted);
 }
 .compaction-status .secondary {
   flex: none;

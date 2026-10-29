@@ -4,6 +4,11 @@ import { create } from "react-test-renderer";
 
 export async function testCompaction(app, requests, setResponse, emit) {
   const original = app.get();
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  globalThis.window = new EventTarget();
+  globalThis.document = new EventTarget();
+  document.visibilityState = "visible";
   const thread = { id: "compact-fixture", cwd: "/compact-fixture" };
   const attachment = {
     id: "compact-attachment",
@@ -81,6 +86,8 @@ export async function testCompaction(app, requests, setResponse, emit) {
       command = app.runComposerCommand("/compact");
     });
     assert(text().includes("正在提交上下文整理"));
+    assert.equal(view.root.findAllByType("p").length, 0);
+    assert(!text().includes("草稿和附件已保留"));
     assert.equal(send().props.disabled, true);
     const at = requests.length;
     await act(async () => {
@@ -241,5 +248,7 @@ export async function testCompaction(app, requests, setResponse, emit) {
   } finally {
     if (view) await closeView();
     app.set(original);
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
   }
 }

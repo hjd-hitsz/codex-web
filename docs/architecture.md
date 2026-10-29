@@ -163,11 +163,13 @@ Vite 在构建时把版本信息和构建时间同时写入前端常量及根目
 
 同版本重复准备原样保留已审阅内容，尚未创建标签的准备批次会阻止继续递增。`scripts/publish-release.mjs` 在临时目录打包并生成 SHA-256，将附件上传到同版本 Release 草稿，两个附件完整上传后转为正式发布。上传中断后重试复用草稿，已正式发布的版本只检查附件存在性，保留原内容；查询失败或正式附件缺失时报告具体错误。
 
-手动上下文整理由 `server/src/compaction.mjs` 记录按对话隔离的异步任务，`thread/compact/start` 确认后继续持有订阅，直到所属轮次完成、失败或中断。桥接通过 `lan/compaction` 广播状态，并在 `lan/state.compactions` 提供多页面与重连快照；同一对话整理期间暂停新的轮次、补充、审查和重复整理。后端重连及 `lan/compaction/check` 读取实际分页轮次，按原轮次 ID 或提交时间与整理记录核对结果，运行中的任务重新订阅，空闲但缺少完成记录时显示待确认结果。客户端在提交前显示常驻状态卡片与耗时，保持草稿可编辑，发送入口统一检查整理占用；任务结束后显示结果并恢复发送。空闲重启脚本也检查整理任务，覆盖请求确认早于开始事件的间隙。
+手动上下文整理由 `server/src/compaction.mjs` 记录按对话隔离的异步任务，`thread/compact/start` 确认后继续持有订阅，直到所属轮次完成、失败或中断。桥接通过 `lan/compaction` 广播状态，并在 `lan/state.compactions` 提供多页面与重连快照；同一对话整理期间暂停新的轮次、补充、审查和重复整理。后端重连及 `lan/compaction/check` 读取实际分页轮次，运行中的整理任务重新订阅。
+
+`server/src/compaction-state.mjs` 为浏览器和桥接共用的纯状态核对逻辑，按已知轮次 ID 或提交时间匹配整理轮次，排除带有普通用户消息的轮次及其中的自动整理。客户端重连、回到前台及整理期间定期核对状态；支持整理快照的桥接使用 `lan/compaction/check` 并应用返回值，缺少快照或任务记录时通过 `thread/read` 和完整分页的 `thread/turns/list` 恢复。检查结果按连接、任务对象和轮次事件修订号隔离；空闲且缺少整理记录，或实际运行的是普通任务时解除遗留整理占用，显示结果待确认。状态卡片仅显示状态、耗时和必要操作；草稿保持可编辑，发送入口统一检查整理占用，任务结束后恢复发送。空闲重启脚本也检查整理任务，覆盖请求确认早于开始事件的间隙。
 
 ## 测试
 
-`tests/components/compaction.mjs` 验证整理状态、确认与完成分离、发送限制、草稿和附件保留、失败重试及对话隔离；`server/tests/subscriptions.test.mjs` 验证订阅保护、多页面写入限制、迟到确认和重连后分页核对。
+`tests/components/compaction.mjs` 验证整理状态、确认与完成分离、发送限制、草稿和附件保留、失败重试及对话隔离；`tests/components/compaction-recovery.mjs` 验证实际连接关闭后的重连、旧桥接分页恢复、前台检查、检查返回值和迟到查询隔离。`client/tests/compaction.test.js` 与 `server/tests/subscriptions.test.mjs` 验证轮次归属、普通任务排除、订阅保护、多页面写入限制和重连后分页核对。`tests/browser/commands.mjs` 使用隔离模拟后端及实际浏览器标签切换，验证后台断线期间完成的整理在返回前台后解除占用，并保存状态截图。
 
 快捷命令由 `composer-commands.js` 统一注册、解析和执行，`shortcuts.jsx` 负责建议列表，`command-dialog.jsx` 提供目标管理与后台终端清理窗口。发送按钮和 Ctrl+Enter 先经过同一命令分发，再提交普通消息。已有命令复用原入口，对照版本、实际支持范围及浏览器回归方法见[命令覆盖记录](cli-command-coverage.md)。
 

@@ -7,6 +7,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import { readConfig } from "./config.mjs";
 import { readVersion } from "./version.mjs";
 import { createCompactions } from "./compaction.mjs";
+import { findCompactionTurn, recoverCompaction } from "./compaction-state.mjs";
 import { MAX_RPC_MESSAGE_BYTES, sendRpcText } from "./rpc-transport.mjs";
 import { createThreadNaming, generateThreadName } from "./thread-names.mjs";
 import { changesForPath, undoFileChanges } from "./file-undo.mjs";
@@ -104,6 +105,14 @@ function checkCompaction(threadId) {
     return checkingCompactions.get(threadId);
   const entry = compactions.entries.get(threadId);
   if (!compactions.busy(threadId)) return Promise.resolve(entry);
+  if (
+    [...pending.values()].some(
+      (request) =>
+        request.threadId === threadId &&
+        request.method === "thread/compact/start",
+    )
+  )
+    return Promise.resolve(entry);
   const current = () =>
     compactions.entries.get(threadId)?.id === entry.id &&
     compactions.busy(threadId);
@@ -113,7 +122,8 @@ function checkCompaction(threadId) {
         threadId,
         includeTurns: false,
       });
-      let cursor, turn;
+      let cursor;
+      const turns = [];
       do {
         const page = await callUpstream("thread/turns/list", {
           threadId,
@@ -122,47 +132,22 @@ function checkCompaction(threadId) {
           ...(cursor ? { cursor } : {}),
         });
         if (!current()) return compactions.entries.get(threadId);
-        const turnId = compactions.entries.get(threadId).turnId;
-        turn = page.data.find((candidate) =>
-          turnId
-            ? candidate.id === turnId
-            : candidate.startedAt >= Math.floor(entry.startedAt) &&
-              (candidate.status === "inProgress" ||
-                candidate.items?.some(
-                  (item) => item.type === "contextCompaction",
-                )),
-        );
+        turns.push(...page.data);
         cursor = page.nextCursor;
-      } while (!turn && cursor);
+      } while (
+        !findCompactionTurn(compactions.entries.get(threadId), turns) &&
+        cursor
+      );
       if (!current()) return compactions.entries.get(threadId);
-      if (turn?.status === "inProgress") {
+      const recovered = recoverCompaction(
+        compactions.entries.get(threadId),
+        thread,
+        turns,
+      );
+      if (recovered.status === "running") {
         await resumeForWrite(threadId);
-        if (current())
-          compactions.update(threadId, {
-            ...compactions.entries.get(threadId),
-            turnId: turn.id,
-            status: "running",
-            error: undefined,
-          });
-      } else if (turn) {
-        compactions.update(threadId, {
-          ...compactions.entries.get(threadId),
-          turnId: turn.id,
-        });
-        compactions.event("turn/completed", { threadId, turn });
-      } else if (["idle", "notLoaded"].includes(thread.status?.type)) {
-        compactions.finish(
-          threadId,
-          "unconfirmed",
-          "后端已空闲，整理结果未确认，可以重新整理。",
-        );
-      } else {
-        compactions.update(threadId, {
-          ...compactions.entries.get(threadId),
-          status: "reconnecting",
-          error: "后端仍在运行，请稍后再次检查整理状态。",
-        });
       }
+      if (current()) compactions.update(threadId, recovered);
       return compactions.entries.get(threadId);
     } catch (error) {
       if (current())
