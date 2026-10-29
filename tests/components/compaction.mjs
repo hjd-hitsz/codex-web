@@ -19,10 +19,16 @@ export async function testCompaction(app, requests, setResponse, emit) {
     acknowledge,
     fail = false;
   const response = ({ method }) => {
-    if (method === "thread/compact/start")
+    if (method === "thread/compact/start") {
+      assert.equal(
+        JSON.parse(localStorage.getItem("cx-compactions"))[thread.id]?.status,
+        "starting",
+        "请求发出前保存恢复记录，覆盖提交响应前刷新",
+      );
       return fail
         ? { error: { message: "模拟整理失败" } }
         : new Promise((resolve) => (acknowledge = resolve));
+    }
     if (method === "thread/list" || method === "skills/list")
       return { data: [] };
     if (method === "turn/start")
@@ -134,6 +140,11 @@ export async function testCompaction(app, requests, setResponse, emit) {
     );
     assert.equal(send().props.disabled, true, "整理记录完成后等待轮次结束");
     assert.equal(
+      JSON.parse(localStorage.getItem("cx-compactions"))[thread.id].turnId,
+      "compact-turn",
+      "保留所属轮次以供完整刷新后核对",
+    );
+    assert.equal(
       app.get().items.find((item) => item.id === "compact-item").status,
       "completed",
     );
@@ -147,6 +158,11 @@ export async function testCompaction(app, requests, setResponse, emit) {
       });
     });
     assert(text().includes("上下文整理完成"));
+    assert.deepEqual(
+      JSON.parse(localStorage.getItem("cx-compactions")),
+      {},
+      "整理结束后清理恢复记录",
+    );
     assert(text().includes("2,000"));
     assert.equal(send().props.disabled, false);
     assert.equal(app.get().draft, "整理期间保留的草稿");

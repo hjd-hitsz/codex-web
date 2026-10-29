@@ -5,9 +5,11 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { testCompactionReload } from "./compaction-reload.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const output = join(root, ".cache/commands-browser");
+const output =
+  process.env.BROWSER_OUTPUT_DIR || join(root, ".cache/commands-browser");
 await mkdir(output, { recursive: true });
 assert(process.env.CHROME_PATH, "通过 CHROME_PATH 指定 Chromium 可执行文件");
 function fixture() {
@@ -56,11 +58,22 @@ function fixture() {
     compactRequest;
   let holdCompact = false,
     compactNumber = 0,
-    legacy = false;
+    legacy = sessionStorage.getItem("compact-legacy") === "true";
+  const completedOnReload = sessionStorage.getItem("compact-on-reload");
+  if (compaction && completedOnReload) {
+    compaction = {
+      ...compaction,
+      status: completedOnReload,
+      completedAt: Date.now() / 1000,
+    };
+    sessionStorage.setItem("compact-fixture", JSON.stringify(compaction));
+  }
+  sessionStorage.removeItem("compact-on-reload");
   const compactState = (entry) => {
     compaction = entry;
     sessionStorage.setItem("compact-fixture", JSON.stringify(entry));
-    socket.emit("lan/compaction", { threadId: thread.id, compaction: entry });
+    if (!legacy)
+      socket.emit("lan/compaction", { threadId: thread.id, compaction: entry });
   };
   window.commandFixture = {
     requests,
@@ -70,6 +83,16 @@ function fixture() {
     },
     holdCompact(value) {
       holdCompact = value;
+    },
+    useLegacy(value) {
+      legacy = value;
+      sessionStorage.setItem("compact-legacy", String(value));
+    },
+    compaction() {
+      return compaction;
+    },
+    finishOnReload(status) {
+      sessionStorage.setItem("compact-on-reload", status);
     },
     disconnect() {
       legacy = true;
@@ -521,9 +544,11 @@ try {
     await pause(100);
   };
   const close = () => click('button[title="关闭窗口"]');
+  let screenshots = 0;
   const screenshot = async (name) => {
     const { data } = await page("Page.captureScreenshot", { format: "png" });
     await writeFile(join(output, name + ".png"), Buffer.from(data, "base64"));
+    screenshots++;
   };
   await page("Emulation.setDeviceMetricsOverride", {
     width: 1440,
@@ -537,6 +562,16 @@ try {
   await waitFor(
     `document.querySelector('textarea[aria-label="消息"]') && document.querySelector('.breadcrumb > span')?.textContent==='核对快捷命令'`,
   );
+  const reloadProof = await testCompactionReload({
+    page,
+    evaluate,
+    waitFor,
+    pause,
+    click,
+    clickText,
+    type,
+    screenshot,
+  });
   await type("/");
   const expectedCommands = [
     "init",
@@ -922,6 +957,7 @@ try {
     build: JSON.parse(await readFile(join(root, "build-info.json"), "utf8")),
     data: "隔离 WebSocket 模拟后端",
     layouts,
+    reloadProof,
     requests: await evaluate("commandFixture.requests.map(r=>r.method)"),
   };
   await writeFile(join(output, "results.json"), JSON.stringify(proof, null, 2));
@@ -929,7 +965,7 @@ try {
     JSON.stringify({
       passed: true,
       output,
-      screenshots: 22,
+      screenshots,
       layouts: layouts.length,
     }),
   );

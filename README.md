@@ -68,7 +68,7 @@ codex-web service install
 codex-web service restart-when-idle
 ```
 
-最后一个命令会等待当前任务和网页终端结束后再重启，等待期间保持命令运行。升级后刷新网页，在“设置 → 关于”查看网页与服务版本；命令行可执行 `codex-web --version`。
+最后一个命令会等待当前任务和上下文整理结束后再重启，等待期间保持命令运行；打开的网页终端不会阻塞更新。升级后刷新网页，在“设置 → 关于”查看网页与服务版本；命令行可执行 `codex-web --version`。
 
 全部命令见 `codex-web --help`，回退与日志查看方法见[部署与维护](docs/deployment.md)。
 

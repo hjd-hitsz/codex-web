@@ -50,7 +50,7 @@ let state = {
   turns: {},
   turnTimings: {},
   active: {},
-  compactions: {},
+  compactions: saved("cx-compactions", {}),
   questions: [],
   models: [],
   model: "",
@@ -99,6 +99,15 @@ export function set(patch) {
   if (patch.cwd) persist("cx-cwd", patch.cwd);
   if (patch.projectless !== undefined)
     persist("cx-projectless", patch.projectless);
+  if (patch.compactions)
+    persist(
+      "cx-compactions",
+      Object.fromEntries(
+        Object.entries(patch.compactions).filter(([, entry]) =>
+          isCompacting(entry),
+        ),
+      ),
+    );
   state = { ...state, ...patch };
   for (const fn of listeners) fn();
 }
@@ -274,8 +283,7 @@ function connect() {
       for (const fn of eventListeners) fn(m);
       if (m.params.ready)
         for (const [threadId, entry] of Object.entries(state.compactions))
-          if (isCompacting(entry) && entry.status !== "starting")
-            refreshCompaction(threadId).catch(() => {});
+          if (isCompacting(entry)) refreshCompaction(threadId).catch(() => {});
       if (m.params.ready && !was) boot();
       return;
     }

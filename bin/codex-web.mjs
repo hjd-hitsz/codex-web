@@ -33,7 +33,7 @@ async function main() {
   service start              启动网页服务及其 Codex 后端
   service stop               停止网页服务
   service restart            重启网页服务
-  service restart-when-idle   等待任务与终端空闲后重启网页服务
+  service restart-when-idle   等待任务与上下文整理结束后重启网页服务
   --version                  显示版本与开发构建标识
   version --json             显示完整版本、提交和构建信息
 

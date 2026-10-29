@@ -41,7 +41,7 @@ codex-web service install
 - `codex-web service install`：安装或更新服务文件，启动尚未运行的服务。
 - `codex-web service status`：查看网页与后端状态。
 - `codex-web service start` / `stop` / `restart`：启动、停止或重启网页服务；启动网页时也会拉起后端，停止网页时后端继续运行。
-- `codex-web service restart-when-idle`：等待当前任务和网页终端结束后重启网页。
+- `codex-web service restart-when-idle`：等待当前任务和上下文整理结束后重启网页，打开的网页终端保持独立。
 
 前台运行时，在两个终端分别执行 `codex-web backend` 和 `codex-web`，并保持终端打开。已有可连接的后端时，直接运行 `codex-web`。
 
@@ -91,7 +91,9 @@ codex-web service install
 codex-web service restart-when-idle
 ```
 
-最后一个命令等待网页服务观察到的任务和网页终端结束后自动重启，等待期间保持命令运行。网页终端可通过 `exit` 或 Ctrl+D 退出。切换 Node.js 版本或 npm prefix 后，也需重新安装服务并重启，以更新服务中的安装路径。
+最后一个命令等待网页服务观察到的任务和上下文整理结束后自动重启，等待期间保持命令运行。打开或隐藏的网页终端不会阻塞更新，等待程序只重启网页服务。切换 Node.js 版本或 npm prefix 后，也需重新安装服务并重启，以更新服务中的安装路径。
+
+日志显示实际等待的任务与上下文整理数量；执行重启后继续检查 `/healthz`，连接就绪时报告实际运行版本，重启或健康检查失败时保留失败状态。
 
 升级后刷新网页，在“设置 → 关于”核对网页和服务版本。`codex-web version --json` 查看当前磁盘安装包，`/healthz` 中的 `version` 查看实际运行的服务，便于确认重启是否生效。
 
@@ -134,4 +136,4 @@ systemctl --user daemon-reload
 systemctl --user restart codex-app-server.service codex-lan-web.service
 ```
 
-`codex-web service restart-when-idle` 检查网页服务观察到的任务和网页终端。重启后端还需确认其他客户端以及对话后台终端的运行状态。
+`codex-web service restart-when-idle` 检查网页服务观察到的任务和上下文整理。重启后端还需确认其他客户端以及网页终端、对话后台终端的运行状态。

@@ -167,9 +167,11 @@ Vite 在构建时把版本信息和构建时间同时写入前端常量及根目
 
 `server/src/compaction-state.mjs` 为浏览器和桥接共用的纯状态核对逻辑，按已知轮次 ID 或提交时间匹配整理轮次，排除带有普通用户消息的轮次及其中的自动整理。客户端重连、回到前台及整理期间定期核对状态；支持整理快照的桥接使用 `lan/compaction/check` 并应用返回值，缺少快照或任务记录时通过 `thread/read` 和完整分页的 `thread/turns/list` 恢复。检查结果按连接、任务对象和轮次事件修订号隔离；空闲且缺少整理记录，或实际运行的是普通任务时解除遗留整理占用，显示结果待确认。状态卡片仅显示状态、耗时和必要操作；草稿保持可编辑，发送入口统一检查整理占用，任务结束后恢复发送。空闲重启脚本也检查整理任务，覆盖请求确认早于开始事件的间隙。
 
+客户端在发送整理请求前，将按对话保存的未结束任务写入浏览器 `cx-compactions`，包含任务标识、提交时间、状态与已取得的轮次 ID。完整页面刷新从该记录恢复提示、耗时和发送限制，再由桥接快照或实际轮次记录核对；提交阶段的恢复任务也在连接就绪后立即核对，当前页面仍在等待提交响应时沿用请求保护。任务结束、归档或删除时同步移除对应恢复记录。兼容旧桥接时，刷新前已经发出的开始通知和刷新期间结束的任务均通过记录恢复。
+
 ## 测试
 
-`tests/components/compaction.mjs` 验证整理状态、确认与完成分离、发送限制、草稿和附件保留、失败重试及对话隔离；`tests/components/compaction-recovery.mjs` 验证实际连接关闭后的重连、旧桥接分页恢复、前台检查、检查返回值和迟到查询隔离。`client/tests/compaction.test.js` 与 `server/tests/subscriptions.test.mjs` 验证轮次归属、普通任务排除、订阅保护、多页面写入限制和重连后分页核对。`tests/browser/commands.mjs` 使用隔离模拟后端及实际浏览器标签切换，验证后台断线期间完成的整理在返回前台后解除占用，并保存状态截图。
+`tests/components/compaction.mjs` 验证整理状态、确认与完成分离、请求发送前持久化、结束后清理、发送限制、草稿和附件保留、失败重试及对话隔离；`tests/components/compaction-recovery.mjs` 验证实际连接关闭后的重连、旧桥接分页恢复、前台检查、检查返回值和迟到查询隔离。`client/tests/compaction.test.js` 与 `server/tests/subscriptions.test.mjs` 验证轮次归属、普通任务排除、订阅保护、多页面写入限制和重连后分页核对。`tests/browser/commands.mjs` 使用隔离模拟后端及实际浏览器标签切换，验证后台断线期间完成的整理在返回前台后解除占用；调用 `compaction-reload.mjs` 覆盖旧桥接下提交后立即刷新、运行中刷新、刷新期间完成、失败和中断，以及已关闭状态的清理，并保存状态截图。
 
 快捷命令由 `composer-commands.js` 统一注册、解析和执行，`shortcuts.jsx` 负责建议列表，`command-dialog.jsx` 提供目标管理与后台终端清理窗口。发送按钮和 Ctrl+Enter 先经过同一命令分发，再提交普通消息。已有命令复用原入口，对照版本、实际支持范围及浏览器回归方法见[命令覆盖记录](cli-command-coverage.md)。
 

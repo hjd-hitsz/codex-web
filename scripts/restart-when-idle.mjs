@@ -4,19 +4,30 @@ import { readConfig } from "../server/src/config.mjs";
 import { isCompacting } from "../server/src/compaction.mjs";
 
 const config = readConfig();
-const url = `ws://127.0.0.1:${config.port}/rpc`;
+const origin = `http://127.0.0.1:${config.port}`;
+const url = origin.replace("http:", "ws:") + "/rpc";
 let timer,
   restarting = false;
 function connect() {
   const socket = new WebSocket(url);
   let ready = false;
   const turns = new Map(),
-    compactions = new Map(),
-    terminals = new Set();
+    compactions = new Map();
+  let lastStatus;
   function check() {
-    clearTimeout(timer);
-    if (!ready || turns.size || compactions.size || terminals.size) return;
-    timer = setTimeout(() => {
+    if (restarting) return;
+    const status = `等待空闲：${turns.size} 个任务，${compactions.size} 个上下文整理${ready ? "。" : "，正在连接。"}`;
+    if (status !== lastStatus) {
+      console.log(status);
+      lastStatus = status;
+    }
+    if (!ready || turns.size || compactions.size) {
+      clearTimeout(timer);
+      timer = undefined;
+      return;
+    }
+    if (timer) return;
+    timer = setTimeout(async () => {
       restarting = true;
       try {
         execFileSync(
@@ -24,7 +35,21 @@ function connect() {
           ["--user", "restart", "codex-lan-web.service"],
           { stdio: "inherit" },
         );
-        console.log("任务和终端已空闲，网页服务已切换到当前项目。");
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const health = await fetch(origin + "/healthz", {
+            signal: AbortSignal.timeout(5000),
+          })
+            .then((response) => response.json())
+            .catch(() => null);
+          if (health?.ready) {
+            console.log(
+              `网页服务已重启并通过健康检查，运行版本：${health.version?.displayVersion || "未知"}。`,
+            );
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        throw new Error("网页服务已执行重启，健康检查等待超时。");
       } catch (error) {
         console.error(error.message);
         process.exitCode = 1;
@@ -35,20 +60,23 @@ function connect() {
   }
   socket.on("message", (bytes) => {
     const { method, params: p = {} } = JSON.parse(bytes);
+    if (
+      ![
+        "lan/state",
+        "lan/compaction",
+        "turn/started",
+        "turn/completed",
+      ].includes(method)
+    )
+      return;
     if (method === "lan/state") {
       ready = p.ready;
       turns.clear();
       for (const [threadId, turnId] of Object.entries(p.activeTurns))
         turns.set(threadId, turnId);
-      terminals.clear();
       compactions.clear();
       for (const [id, entry] of Object.entries(p.compactions || {}))
         if (isCompacting(entry)) compactions.set(id, entry);
-      for (const [id, terminal] of Object.entries(p.terminals))
-        if (terminal.running) terminals.add(id);
-      console.log(
-        `等待空闲：${turns.size} 个任务，${compactions.size} 个上下文整理，${terminals.size} 个终端。`,
-      );
     }
     if (method === "lan/compaction") {
       if (isCompacting(p.compaction)) compactions.set(p.threadId, p.compaction);
@@ -57,13 +85,12 @@ function connect() {
     if (method === "turn/started") turns.set(p.threadId, p.turn.id);
     if (method === "turn/completed" && turns.get(p.threadId) === p.turn.id)
       turns.delete(p.threadId);
-    if (method === "lan/terminalStarted") terminals.add(p.processId);
-    if (method === "lan/terminalExit") terminals.delete(p.processId);
     check();
   });
   socket.on("error", (error) => console.error(error.message));
   socket.on("close", () => {
     clearTimeout(timer);
+    timer = undefined;
     if (!restarting) setTimeout(connect, 2000);
   });
 }
