@@ -1003,6 +1003,8 @@ p {
   font-size: 12px;
 }
 .annotation-add {
+  position: fixed;
+  z-index: 40;
   padding: 8px 12px;
   margin: 0;
   border: 1px solid var(--border);
@@ -1041,14 +1043,87 @@ p {
   font-size: 12px;
   margin-top: 4px;
 }
-.annotation-card,
-.annotation-editor {
+.annotation-card {
   margin: 8px 0;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--subtle);
   min-width: 0;
+}
+.annotation-editor {
+  position: fixed;
+  z-index: 45;
+  width: min(22.6154rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 1rem);
+  min-height: 3.3846rem;
+  margin: 0;
+  padding: 0.7692rem 5.6923rem 0.7692rem 1.2308rem;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, var(--bg));
+  border-radius: 1.6923rem;
+  background: var(--bg);
+  box-shadow:
+    0 0.3077rem 1.2308rem #00000014,
+    0 0.0769rem 0.2308rem #0000000a;
+  font-size: var(--chat-font-size);
+  line-height: var(--chat-line-height);
+}
+.annotation-editor[data-expanded="true"] {
+  padding: 0.9231rem 1.2308rem 3.3846rem;
+}
+.annotation-draft-marker {
+  position: fixed;
+  z-index: 35;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 1px solid var(--link);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--link);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.annotation-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  max-height: 5.5rem;
+  overflow: auto;
+  padding: 0.375rem 0.5rem;
+}
+.annotation-attachment {
+  display: flex;
+  max-width: min(18rem, 100%);
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--subtle);
+}
+.annotation-attachment button {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.25rem;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.annotation-attachment svg {
+  flex-shrink: 0;
+}
+.annotation-attachment span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .annotation-card summary {
   cursor: pointer;
@@ -1058,8 +1133,7 @@ p {
   margin-right: 5px;
   vertical-align: middle;
 }
-.annotation-card blockquote,
-.annotation-editor blockquote {
+.annotation-card blockquote {
   margin: 8px 0;
   padding-left: 10px;
   border-left: 3px solid var(--border);
@@ -1074,41 +1148,61 @@ p {
   overflow-wrap: anywhere;
   margin: 8px 0 0;
 }
-.annotation-editor-heading,
 .annotation-editor-actions {
+  position: absolute;
+  right: 0.6154rem;
+  bottom: 0.6154rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 0.3077rem;
 }
-.annotation-editor-heading button {
+.annotation-editor-actions button {
   display: flex;
-  padding: 4px;
-  background: transparent;
+  align-items: center;
+  justify-content: center;
+  width: 2.1538rem;
+  height: 2.1538rem;
+  padding: 0;
   border: 0;
-  color: var(--muted);
+  border-radius: 50%;
   cursor: pointer;
 }
-.annotation-editor textarea {
-  width: 100%;
-  resize: vertical;
-  min-height: 75px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-}
-.annotation-editor-actions {
-  margin-top: 8px;
-}
-.annotation-editor-actions small {
+.annotation-editor-remove {
+  background: transparent;
   color: var(--muted);
 }
-.annotation-editor [role="alert"] {
-  color: var(--red);
+.annotation-editor-remove:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.annotation-editor-done {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.annotation-editor-done:hover {
+  opacity: 0.85;
+}
+.annotation-editor[data-expanded="true"] .annotation-editor-actions {
+  left: 0.6154rem;
+  justify-content: space-between;
+}
+.annotation-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 1lh;
+  max-height: 5lh;
+  resize: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  line-height: inherit;
+}
+.annotation-editor textarea::placeholder {
+  color: var(--muted);
 }
 .assistant-message {
   padding: 2px 0 0;

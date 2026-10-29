@@ -53,6 +53,32 @@ test("原文中的分隔符安全往返，格式错误时保留完整消息", ()
   assert.deepEqual(parseAnnotations(text), { text, annotations: [] });
 });
 
+test("批量批注与正文统一序列化，省略本地草稿 ID 并保留空请求", () => {
+  const entries = [
+    {
+      id: "draft-a",
+      text: "第一处原文",
+      annotation: "第一条批注",
+      source: { messageId: "reply-a" },
+    },
+    {
+      id: "draft-b",
+      text: "第二处原文",
+      annotation: "第二条批注",
+      source: { messageId: "reply-b" },
+    },
+  ];
+  const parsed = parseAnnotations(
+    annotationMessage(entries, "同时补充完整示例。"),
+  );
+  assert.equal(parsed.text, "同时补充完整示例。");
+  assert.deepEqual(
+    parsed.annotations,
+    entries.map(({ id, ...entry }) => entry),
+  );
+  assert.equal(parseAnnotations(annotationMessage(entries, "")).text, "");
+});
+
 test("批注上下文按轮次和中途引导消息隔离", () => {
   const a = [{ text: "第一段", annotation: "修正第一段" }];
   const b = [{ text: "第二段", annotation: "修正第二段" }];

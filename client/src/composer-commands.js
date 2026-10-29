@@ -1,5 +1,6 @@
 import * as store from "./store";
 import { isCompacting } from "./compaction";
+import { readAnnotationDrafts } from "./annotation-drafts";
 
 // 已有网页命令复用原入口，新增命令仅包含 init、goal 和后台终端清理。
 export const composerCommands = [
@@ -256,9 +257,10 @@ async function executeCommand(text) {
 export async function submitComposer() {
   if (isCompacting(store.get().compactions[store.get().current?.id])) return;
   try {
-    const text = store.get().draft;
-    if (await runComposerCommand(text)) return;
-    await store.sendMessage();
+    const s = store.get();
+    const annotations = readAnnotationDrafts(s.current?.id);
+    if (!annotations.length && (await runComposerCommand(s.draft))) return;
+    await store.sendMessage(s.draft, s.attachments, { annotations });
   } catch (error) {
     store.report(error);
   }

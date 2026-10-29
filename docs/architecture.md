@@ -61,7 +61,13 @@ Node.js 网页桥接服务
 
 `annotations.js` 解析桌面端的 `# Response annotations:` 前缀和 `<response-annotations>` JSON 数组，每项保留 `text`、可选的 `annotation` 与 `source`。`annotationContexts` 按轮次和前置用户消息为助手回复关联批注，普通补充消息清除后续回复的旧批注上下文；未加载原始用户消息时，编号引用提示加载相关历史。Markdown 插件只将普通文字中的 `:codex-annotation{index="N"}` 转成行内编号，代码、公式和链接保持各自解析规则。`message-annotations.jsx` 展示历史批注卡片及可展开的行内引用，通过稳定的组件与 React Context 保持流式更新期间的展开状态。
 
-批注入口仅随有效文字选区显示，选择助手回复文字后可通过选区旁的浮动按钮添加批注。监听 `selectionchange` 以支持触屏选区调整，滚动时跟随选区更新按钮位置，并在卸载时清理监听。选区通过浏览器 Range 记录原文及 `source.messageId`、`startOffset`、`endOffset`；偏移量以渲染后文字的 UTF-16 位置计算。批注编辑内容保存在 `cx-annotation-<threadId>-<messageId>`，由共享订阅同步重新挂载的编辑器；取消时清理，发送成功仅清理仍与提交内容一致的草稿，保留等待期间切回对话后继续编辑的内容。重载与重新打开消息时恢复草稿。发送使用兼容桌面端的文本格式，JSON 中的尖括号转义以保护分隔符，并通过 `sendMessage` 的 `clearDraft: false` 保留主输入框草稿和附件；运行中走 `turn/steer`，空闲时走 `turn/start`，写入检查、失败重试和错误显示沿用现有流程。`client/tests/annotations.test.js` 和 `tests/components/annotations.mjs` 使用构造数据与模拟后端验证格式、上下文隔离、行内引用、选区位置、发送和草稿恢复。
+批注入口仅随有效文字选区显示，选择助手回复文字后可通过选区旁的浮动按钮添加多条批注。监听 `selectionchange` 以支持触屏选区调整，选区通过浏览器 Range 记录原文及 `source.messageId`、`startOffset`、`endOffset`；偏移量以渲染后文字的 UTF-16 位置计算。原文旁的编号与浮层通过 Portal 挂到页面根部，滚动、容器尺寸和页面缩放变化时重新定位，卸载时清理监听与尺寸观察器。编辑器参考客户端的 294 像素宽、22 像素圆角表面，按根字号等比缩放，保留聊天字号；单行约 44 像素高，输入换行或超过单行宽度时自动展开，长内容在输入区内滚动。输入区与浮层共用表面，移除和完成使用带无障碍名称的图标按钮，原文放入浮层的无障碍描述。输入框显示批注列表，可重新打开编辑器或逐条移除；完成、关闭及输入操作只更新草稿。
+
+`annotation-drafts.js` 将同一对话的批注数组存入 `cx-annotation-drafts-<threadId>`，通过共享订阅与浏览器存储事件同步列表，恢复消息时迁移旧的 `cx-annotation-<threadId>-<messageId>` 草稿。`submitComposer` 在点击底部发送按钮或 Ctrl+Enter 时读取批注快照，并将其与正文、附件交给 `sendMessage`；有批注时将正文作为普通请求统一提交。`annotationMessage` 按数组顺序序列化原文、批注及来源，剔除本地草稿 ID，并转义 JSON 中的尖括号。运行中走 `turn/steer`，空闲时走 `turn/start`；写入检查、上下文整理占用及失败处理沿用统一发送流程。成功后仅删除仍与提交快照一致的批注、正文和附件，等待期间新增或修改的内容继续保留。`client/tests/annotations.test.js`、`tests/components/annotations.mjs` 和 `tests/browser/annotations.mjs` 分别验证格式与上下文、草稿及提交生命周期、生产构建下的悬浮布局和实际点击输入。
+
+客户端查验依据：2026-10-29 阅读本机 `openai.chatgpt-26.908.40401-linux-x64` 附带的客户端资源。`app-initial-1e5ee25fb4ec.js` 中的 `Uwt` 将批注加入 `responseTextAnnotations` 数组，`Gwt` 和 `Kwt` 分别更新、移除单条；`Mwr` 将原文编号和编辑器通过 Portal 放入浮层，输入框附件组件 `Xir` 提供编辑、定位及移除入口。`app-initial-bca4f920746a.js` 的 `O7t` 在主提交阶段统一序列化整个数组和正文。该客户端还存在批注编辑器直发分支；网页按产品要求仅允许底部发送按钮或 Ctrl+Enter 统一提交。
+
+编辑器外观依据：同版 `app-initial-a190b16fc630.js` 的 `KXn` 创建选区批注编辑器，将宽度设为 294 像素，创建状态初始高度为 44 像素，并复用共享编辑器。`app-initial-1e5ee25fb4ec.js` 的 `eCr` 定义 22 像素圆角、单一表面、细描边和轻阴影，`ACr` 使用无内边框的输入区与紧凑图标操作；文本增多后从单行浮层展开。网页按相同层次组织内容，输入和草稿提交继续复用网页既有流程。
 
 `message-image.jsx` 处理 Markdown 图片和历史 `localImage` 附件。`image-source.js` 将绝对路径、`file:`、`sandbox:` 以及相对工作目录的图片引用解析为本机路径；组件通过已有的 `fs/readFile` RPC 读取 Base64 数据，并按图片类型构造 Data URL。相对路径优先使用当前对话的 `cwd`，随后使用已选目录或默认目录。加载失败或浏览器解码失败时显示提示和重试按钮，断线后随重连重读，路径切换及卸载后忽略迟到响应。HTTP、HTTPS 与协议相对地址直接交给浏览器；Markdown URL 过滤仅对图片放行本地 URI 和指定类型的 Base64 图片，其余沿用 React Markdown 的默认规则。
 

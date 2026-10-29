@@ -3,6 +3,11 @@ import { fullAccessParams } from "./execution-policy";
 import { modelServiceTiers, resolveServiceTier } from "./service-tier";
 import { inputRequestItem } from "./question-state";
 import { isCompacting, recoverCompaction } from "./compaction";
+import { annotationMessage } from "./annotations";
+import {
+  readAnnotationDrafts,
+  removeSentAnnotations,
+} from "./annotation-drafts";
 import {
   createThreadOrdering,
   projectGroups,
@@ -945,10 +950,10 @@ export async function ensureThread() {
 export async function sendMessage(
   text = state.draft,
   attachments = state.attachments,
-  { clearDraft = true, questionId, questionAnswers } = {},
+  { clearDraft = true, questionId, questionAnswers, annotations = [] } = {},
 ) {
   if (
-    (!text.trim() && !attachments.length) ||
+    (!text.trim() && !attachments.length && !annotations.length) ||
     state.busy ||
     state.loading ||
     isCompacting(state.compactions[state.current?.id]) ||
@@ -963,7 +968,17 @@ export async function sendMessage(
   try {
     thread = await ensureThread();
     const input = [
-      ...(text.trim() ? [{ type: "text", text, text_elements: [] }] : []),
+      ...(text.trim() || annotations.length
+        ? [
+            {
+              type: "text",
+              text: annotations.length
+                ? annotationMessage(annotations, text)
+                : text,
+              text_elements: [],
+            },
+          ]
+        : []),
       ...attachments.map((a) => a.input),
     ];
     const running = state.active[thread.id];
@@ -1016,8 +1031,20 @@ export async function sendMessage(
       if (state.current?.id === thread.id)
         set({
           ...(state.draft === text ? { draft: "" } : {}),
-          attachments: [],
+          attachments: state.attachments.filter(
+            (entry) => !attachments.includes(entry),
+          ),
         });
+    }
+    if (annotations.length) {
+      removeSentAnnotations(thread.id, annotations);
+      if (
+        state.annotationEditor?.threadId === thread.id &&
+        !readAnnotationDrafts(thread.id).some(
+          (entry) => entry.id === state.annotationEditor.id,
+        )
+      )
+        set({ annotationEditor: null });
     }
     if (questionId && state.current?.id === thread.id) {
       const question = state.items.find((item) => item.id === questionId);

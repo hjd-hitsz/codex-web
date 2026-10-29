@@ -62,7 +62,12 @@ import { ReasoningEffortControl } from "./reasoning-effort";
 import { MessageImage } from "./message-image";
 import { RichText } from "./rich-text";
 import { annotationContexts } from "./annotations";
-import { AnnotatedUserText, MessageAnnotations } from "./message-annotations";
+import {
+  AnnotatedUserText,
+  MessageAnnotations,
+  ComposerAnnotations,
+} from "./message-annotations";
+import { useAnnotationDrafts } from "./annotation-drafts";
 import { TurnFileChanges } from "./turn-file-changes";
 import { turnElapsedMs, formatElapsed } from "./turn-timing";
 import { ConversationNavigation } from "./conversation-navigation";
@@ -911,6 +916,7 @@ export function Composer() {
   const s = useStore(),
     area = useRef(),
     files = useRef();
+  const annotationDrafts = useAnnotationDrafts(s.current?.id);
   const shortcuts = useComposerShortcuts(area);
   const active = s.active[s.current?.id];
   const compaction = s.compactions[s.current?.id];
@@ -999,6 +1005,7 @@ export function Composer() {
             add(e.dataTransfer.files);
           }}
         >
+          <ComposerAnnotations />
           {s.attachments.length > 0 && (
             <div className="attachment-list">
               {s.attachments.map((a) => (
@@ -1137,7 +1144,9 @@ export function Composer() {
                   !s.connected ||
                   compacting ||
                   s.busy ||
-                  (!s.draft.trim() && !s.attachments.length)
+                  (!s.draft.trim() &&
+                    !s.attachments.length &&
+                    !annotationDrafts.length)
                 }
                 onClick={submit}
               >

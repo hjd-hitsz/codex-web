@@ -76,6 +76,8 @@ npm run check
 
 测试采用模拟后端，不消耗模型额度，也不修改真实聊天。协议或生命周期变更应补充对应回归测试；真实后端验证使用临时会话或明确的测试数据。各测试目录的覆盖范围见[架构说明中的测试章节](architecture.md#测试)。
 
+批注浏览器回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/annotations.mjs`。脚本复制当前生产资源，在独立浏览器配置目录中使用模拟 WebSocket 历史，验证多批注草稿、悬浮编辑、缩放、窄屏、刷新恢复、失败重试及正文统一提交；截图和构建来源记录默认写入 `.cache/annotations-browser`，可通过 `BROWSER_OUTPUT_DIR` 指定目录。
+
 单独验证发行包时执行：
 
 ```bash
