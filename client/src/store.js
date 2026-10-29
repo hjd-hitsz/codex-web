@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { fullAccessParams } from "./execution-policy";
 import { modelServiceTiers, resolveServiceTier } from "./service-tier";
 import { inputRequestItem } from "./question-state";
+import { isCompacting } from "./compaction";
 import {
   createThreadOrdering,
   projectGroups,
@@ -47,6 +48,7 @@ let state = {
   turns: {},
   turnTimings: {},
   active: {},
+  compactions: {},
   questions: [],
   models: [],
   model: "",
@@ -259,6 +261,7 @@ function connect() {
         connected: m.params.ready,
         serverVersion: m.params.version || null,
         active: m.params.activeTurns,
+        compactions: { ...state.compactions, ...m.params.compactions },
         questions: m.params.questions,
         terminals: m.params.terminals || {},
       });
@@ -311,7 +314,21 @@ function connect() {
   connection.onclose = () => {
     if (socket !== connection) return;
     bootRevision++;
-    set({ connected: false });
+    set({
+      connected: false,
+      compactions: Object.fromEntries(
+        Object.entries(state.compactions).map(([id, entry]) => [
+          id,
+          isCompacting(entry)
+            ? {
+                ...entry,
+                status: "reconnecting",
+                error: "连接中断，重连后将核对整理结果。",
+              }
+            : entry,
+        ]),
+      ),
+    });
     for (const p of pending.values()) {
       clearTimeout(p.timer);
       p.reject(new Error("连接中断，正在重连；已提交的任务会在电脑上继续。"));
@@ -652,6 +669,13 @@ function recordTurnTimings(threadId, turns) {
   set({ turnTimings: { ...state.turnTimings, [threadId]: timings } });
 }
 function handle({ method, params: p = {} }) {
+  if (method === "lan/compaction") {
+    if (!deletedThreads.has(p.threadId))
+      set({
+        compactions: { ...state.compactions, [p.threadId]: p.compaction },
+      });
+    return;
+  }
   if (method === "turn/started" || method === "turn/completed")
     turnRevisions.set(p.threadId, (turnRevisions.get(p.threadId) || 0) + 1);
   if (method === "thread/deleted") {
@@ -707,6 +731,14 @@ function handle({ method, params: p = {} }) {
     return;
   }
   if (method === "turn/started") {
+    const entry = state.compactions[p.threadId];
+    if (isCompacting(entry) && !entry.turnId)
+      set({
+        compactions: {
+          ...state.compactions,
+          [p.threadId]: { ...entry, status: "running", turnId: p.turn.id },
+        },
+      });
     recordTurnTimings(p.threadId, [
       {
         ...p.turn,
@@ -719,12 +751,30 @@ function handle({ method, params: p = {} }) {
     set({ active: { ...state.active, [p.threadId]: p.turn.id } });
   }
   if (method === "turn/completed") {
+    const entry = state.compactions[p.threadId];
+    if (isCompacting(entry) && entry.turnId === p.turn.id)
+      set({
+        compactions: {
+          ...state.compactions,
+          [p.threadId]: {
+            ...entry,
+            status:
+              p.turn.status === "completed"
+                ? "completed"
+                : p.turn.status === "interrupted"
+                  ? "interrupted"
+                  : "failed",
+            completedAt: p.turn.completedAt ?? Date.now() / 1000,
+            error: p.turn.error?.message,
+          },
+        },
+      });
     recordTurnTimings(p.threadId, [
       { ...p.turn, completedAt: p.turn.completedAt ?? Date.now() / 1000 },
     ]);
     threadOrdering.completed(p.threadId, p.turn);
     const active = { ...state.active };
-    delete active[p.threadId];
+    if (active[p.threadId] === p.turn.id) delete active[p.threadId];
     const completedAt = p.turn.completedAt;
     const update = (thread) =>
       thread?.id === p.threadId && Number.isFinite(completedAt)
@@ -783,6 +833,20 @@ function handle({ method, params: p = {} }) {
     set({ serviceTier: p.threadSettings.serviceTier ?? null });
   if (method === "error") report(p.error || p.message || "任务失败");
   if (method === "item/started" || method === "item/completed") {
+    if (p.item.type === "contextCompaction") {
+      p.item = {
+        ...p.item,
+        status: method === "item/started" ? "inProgress" : "completed",
+      };
+      const entry = state.compactions[p.threadId];
+      if (isCompacting(entry) && !entry.turnId)
+        set({
+          compactions: {
+            ...state.compactions,
+            [p.threadId]: { ...entry, turnId: p.turnId, status: "running" },
+          },
+        });
+    }
     let questionId;
     if (p.item.type === "userMessage") {
       const text = (p.item.content || [])
@@ -871,6 +935,7 @@ export async function sendMessage(
     (!text.trim() && !attachments.length) ||
     state.busy ||
     state.loading ||
+    isCompacting(state.compactions[state.current?.id]) ||
     (state.threadAccess &&
       state.threadAccess.threadId === state.current?.id &&
       state.threadAccess.status !== "ready")
@@ -996,8 +1061,11 @@ function syncArchivedThread(id) {
     localStorage.removeItem("cx-current");
   const active = { ...state.active };
   delete active[id];
+  const compactions = { ...state.compactions };
+  delete compactions[id];
   set({
     active,
+    compactions,
     threads: state.archived
       ? state.threads
       : state.threads.filter((thread) => thread.id !== id),
@@ -1029,6 +1097,7 @@ function forgetThread(id) {
   const patch = {};
   for (const key of [
     "active",
+    "compactions",
     "turns",
     "turnTimings",
     "diffs",
@@ -1076,11 +1145,44 @@ export async function fork(thread = state.current, lastTurnId) {
   notice("已创建对话分支");
 }
 export async function compact() {
-  const t = await ensureThread();
-  await rpc("thread/compact/start", { threadId: t.id });
-  notice("已开始整理对话上下文");
+  if (state.busy || state.loading || state.active[state.current?.id])
+    throw new Error("请等待当前任务结束后整理上下文。");
+  if (isCompacting(state.compactions[state.current?.id]))
+    throw new Error("正在整理上下文，完成后可继续发送。");
+  if (state.threadAccess && state.threadAccess.status !== "ready")
+    throw new Error("请先恢复对话连接，再整理上下文。");
+  const t = state.current || (await ensureThread());
+  if (isCompacting(state.compactions[t.id]))
+    throw new Error("正在整理上下文，完成后可继续发送。");
+  const entry = { id: uid(), status: "starting", startedAt: Date.now() / 1000 };
+  set({ compactions: { ...state.compactions, [t.id]: entry }, error: "" });
+  try {
+    await rpc("thread/compact/start", { threadId: t.id });
+  } catch (error) {
+    const latest = state.compactions[t.id];
+    if (latest?.id === entry.id && isCompacting(latest))
+      set({
+        compactions: {
+          ...state.compactions,
+          [t.id]: {
+            ...latest,
+            status: /超时|连接中断/.test(error.message)
+              ? "reconnecting"
+              : "failed",
+            error: error.message,
+            ...(!/超时|连接中断/.test(error.message) && {
+              completedAt: Date.now() / 1000,
+            }),
+          },
+        },
+      });
+    if (state.current?.id !== t.id) return false;
+    throw error;
+  }
 }
 export async function review() {
+  if (isCompacting(state.compactions[state.current?.id]))
+    throw new Error("正在整理上下文，完成后可继续审查。");
   const t = await ensureThread();
   await rpc("review/start", {
     threadId: t.id,

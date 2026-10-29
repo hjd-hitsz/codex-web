@@ -34,6 +34,8 @@ import {
   setDraft,
   sendMessage,
   refreshThreadAccess,
+  compact,
+  rpc,
   stop,
   report,
   copy,
@@ -47,6 +49,7 @@ import {
 } from "./store";
 import { IconButton, DiffBlock } from "./workspace";
 import { useComposerShortcuts } from "./shortcuts";
+import { submitComposer } from "./composer-commands";
 import { actionableMessages } from "./message-actions";
 import { reasoningSummaries } from "./reasoning-summary";
 import { useSummaryTranslation } from "./use-summary-translation";
@@ -62,6 +65,7 @@ import { AnnotatedUserText, MessageAnnotations } from "./message-annotations";
 import { TurnFileChanges } from "./turn-file-changes";
 import { turnElapsedMs, formatElapsed } from "./turn-timing";
 import { ConversationNavigation } from "./conversation-navigation";
+import { isCompacting } from "./compaction";
 import { isSubAgentItem, subAgentAction, subAgents } from "./sub-agents";
 export { RichText } from "./rich-text";
 function Content({ content, cwd }) {
@@ -680,6 +684,7 @@ export function Conversation({ children }) {
   const annotations = annotationContexts(s.items);
   const active = s.active[s.current?.id],
     plan = s.plans[s.current?.id];
+  const compacting = isCompacting(s.compactions[s.current?.id]);
   const actions = actionableMessages(
     s.items,
     s.turns[s.current?.id] || [],
@@ -863,7 +868,10 @@ export function Conversation({ children }) {
             {active && (
               <div className="working-status">
                 <span className="pulse-dot" />
-                Codex 正在工作<small>你可以继续补充要求</small>
+                {compacting ? "正在整理上下文" : "Codex 正在工作"}
+                <small>
+                  {compacting ? "完成后可继续发送" : "你可以继续补充要求"}
+                </small>
               </div>
             )}
           </div>
@@ -906,6 +914,12 @@ export function Composer() {
     files = useRef();
   const shortcuts = useComposerShortcuts(area);
   const active = s.active[s.current?.id];
+  const compaction = s.compactions[s.current?.id];
+  const compacting = isCompacting(compaction);
+  function submit() {
+    shortcuts.close();
+    return submitComposer();
+  }
   useEffect(() => {
     if (area.current) {
       area.current.style.height = "auto";
@@ -929,6 +943,12 @@ export function Composer() {
   const checking = s.loading || access?.status === "checking";
   return (
     <div className="composer-wrap">
+      {compaction && (
+        <CompactionStatus
+          key={s.current?.id + compaction.id}
+          entry={compaction}
+        />
+      )}
       {!unavailable && shortcuts.popup}
       {unavailable ? (
         <div
@@ -1013,9 +1033,11 @@ export function Composer() {
               shortcuts.open ? shortcuts.activeId : undefined
             }
             placeholder={
-              active
-                ? "补充说明，或等待 Codex 完成…"
-                : "描述任务，@ 引用文件，/ 使用命令…"
+              compacting
+                ? "正在整理上下文，可先编辑草稿…"
+                : active
+                  ? "补充说明，或等待 Codex 完成…"
+                  : "描述任务，@ 引用文件，/ 使用命令…"
             }
             value={s.draft}
             onChange={(e) => {
@@ -1047,7 +1069,7 @@ export function Composer() {
                 !e.nativeEvent.isComposing
               ) {
                 e.preventDefault();
-                sendMessage();
+                submit();
               }
             }}
           />
@@ -1114,10 +1136,11 @@ export function Composer() {
                 title="发送消息"
                 disabled={
                   !s.connected ||
+                  compacting ||
                   s.busy ||
                   (!s.draft.trim() && !s.attachments.length)
                 }
-                onClick={() => sendMessage()}
+                onClick={submit}
               >
                 {s.busy ? (
                   <LoaderCircle size={18} className="spin" />
@@ -1153,6 +1176,86 @@ export function Composer() {
           )}
         </span>
       </div>
+    </div>
+  );
+}
+
+function CompactionStatus({ entry }) {
+  const s = useStore();
+  const working = isCompacting(entry);
+  const [checking, setChecking] = useState(false);
+  const titles = {
+    starting: "正在提交上下文整理…",
+    running: "正在整理上下文…",
+    reconnecting: "正在确认整理状态…",
+    completed: "上下文整理完成",
+    failed: "上下文整理失败",
+    interrupted: "上下文整理已中断",
+    unconfirmed: "整理结果待确认",
+  };
+  return (
+    <div
+      className={"compaction-status " + entry.status}
+      role="status"
+      aria-live="polite"
+      aria-busy={working}
+    >
+      {working ? (
+        <LoaderCircle size={17} className="spin" />
+      ) : entry.status === "completed" ? (
+        <CheckCircle2 size={17} />
+      ) : (
+        <AlertCircle size={17} />
+      )}
+      <div className="compaction-status-content">
+        <strong>{titles[entry.status]}</strong>
+        <ProcessDuration timing={entry} working={working} />
+        <p>
+          {entry.error ||
+            (working
+              ? "完成后可继续发送，草稿和附件已保留。"
+              : entry.status === "completed"
+                ? "可以继续发送消息。"
+                : "草稿和附件已保留，可以重新整理。")}
+        </p>
+      </div>
+      {entry.status === "reconnecting" ? (
+        <button
+          className="secondary"
+          disabled={!s.connected || checking}
+          onClick={async () => {
+            setChecking(true);
+            try {
+              await rpc("lan/compaction/check", { threadId: s.current.id });
+            } catch (error) {
+              report(error);
+            } finally {
+              setChecking(false);
+            }
+          }}
+        >
+          {checking ? "正在检查…" : "检查状态"}
+        </button>
+      ) : !working && entry.status !== "completed" ? (
+        <button
+          className="secondary"
+          disabled={!s.connected || !!s.active[s.current?.id]}
+          onClick={() => compact().catch(report)}
+        >
+          重新整理
+        </button>
+      ) : null}
+      {!working && (
+        <IconButton
+          icon={X}
+          title="关闭整理状态"
+          onClick={() => {
+            const entries = { ...get().compactions };
+            delete entries[s.current.id];
+            set({ compactions: entries });
+          }}
+        />
+      )}
     </div>
   );
 }

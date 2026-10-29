@@ -19,6 +19,8 @@ import { testHistoryTranslations } from "./history-translations.mjs";
 import { testConversationScroll } from "./conversation-scroll.mjs";
 import { testMessageNavigation } from "./message-navigation.mjs";
 import { testContextPanel } from "./context-panel.mjs";
+import { testCommands } from "./commands.mjs";
+import { testCompaction } from "./compaction.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -75,6 +77,18 @@ await testMermaid(app);
 {
   const previousResponse = responseFor;
   try {
+    await testCommands(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
+    await testCompaction(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
     await testHistory(
       app,
       requests,

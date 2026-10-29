@@ -62,6 +62,8 @@ package-lock.json      全项目依赖锁文件
 
 前端采用 React，Node.js 桥接服务负责静态资源和 WebSocket JSON-RPC 转发。组件职责、状态流转、协议和生命周期约束见[架构说明](architecture.md)。
 
+快捷命令的 CLI 对照、网页复用入口、专用能力边界及浏览器回归方法见[命令覆盖记录](cli-command-coverage.md)。
+
 ## 格式与验证
 
 ```bash

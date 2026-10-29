@@ -67,6 +67,8 @@ import { projectGroups, threadTime } from "./thread-order";
 import { VersionDetails } from "./version";
 import { ProjectGroup } from "./project-group";
 import { ContextWorkspace } from "./context-panel";
+import { CommandDialog, commandTitles } from "./command-dialog";
+import { isCompacting } from "./compaction";
 
 function ThreadMenu({ thread, onClose }) {
   const s = useStore();
@@ -95,7 +97,14 @@ function ThreadMenu({ thread, onClose }) {
         {s.archived ? "恢复对话" : "归档对话"}
       </button>
       {s.current?.id === thread.id && (
-        <button onClick={() => action(compact)}>
+        <button
+          disabled={
+            s.busy ||
+            !!s.active[thread.id] ||
+            isCompacting(s.compactions[thread.id])
+          }
+          onClick={() => action(compact)}
+        >
           <Minimize2 size={14} />
           整理上下文
         </button>
@@ -725,9 +734,18 @@ function DeleteDialog({ thread }) {
 }
 function Modal() {
   const s = useStore();
+  useEffect(() => {
+    if (
+      s.modal?.type === "command" &&
+      s.modal.thread &&
+      s.modal.thread.id !== s.current?.id
+    )
+      set({ modal: null });
+  }, [s.current?.id, s.modal]);
   if (!s.modal) return null;
   const { type } = s.modal;
   const titles = {
+    command: commandTitles[s.modal.view],
     search: "搜索对话",
     rename: "重命名对话",
     delete: "删除对话",
@@ -759,7 +777,14 @@ function Modal() {
             onClick={() => set({ modal: null })}
           />
         </div>
-        {type === "delete" ? (
+        {type === "command" ? (
+          <div
+            className="command-dialog"
+            key={s.modal.view + (s.modal.thread?.id || "")}
+          >
+            <CommandDialog modal={s.modal} />
+          </div>
+        ) : type === "delete" ? (
           <DeleteDialog thread={s.modal.thread} />
         ) : type === "model" ? (
           <ModelDialog />

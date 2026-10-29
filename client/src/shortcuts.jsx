@@ -20,143 +20,37 @@ import {
 } from "lucide-react";
 import * as store from "./store";
 
-const commands = [
-  {
-    id: "new",
-    label: "新对话",
-    description: "在当前项目开始新对话",
-    icon: SquarePen,
-    run: () => store.newChat(),
-  },
-  {
-    id: "model",
-    label: "模型与思考强度",
-    description: "选择模型和推理强度",
-    icon: Brain,
-    run: () => store.set({ modal: { type: "model" } }),
-  },
-  {
-    id: "plan",
-    label: "计划模式",
-    description: "切换计划模式与执行模式",
-    icon: ListChecks,
-    run: () => {
-      const mode = store.get().mode === "plan" ? "default" : "plan";
-      store.set({ mode });
-      store.notice(mode === "plan" ? "已切换到计划模式" : "已切换到执行模式");
-    },
-  },
-  {
-    id: "review",
-    label: "代码审查",
-    description: "审查当前项目未提交的更改",
-    icon: GitPullRequest,
-    run: () => {
-      store.set({ panel: "changes" });
-      return store.review();
-    },
-  },
-  {
-    id: "compact",
-    label: "整理上下文",
-    description: "压缩当前对话上下文",
-    icon: Minimize2,
-    current: true,
-    run: store.compact,
-  },
-  {
-    id: "skills",
-    label: "技能",
-    description: "选择已安装技能",
-    icon: Sparkles,
-    run: () => store.set({ modal: { type: "skills" } }),
-  },
-  {
-    id: "files",
-    label: "文件",
-    description: "浏览和编辑项目文件",
-    icon: Folder,
-    run: () => store.set({ panel: "files" }),
-  },
-  {
-    id: "diff",
-    label: "查看变更",
-    description: "查看 Git 差异及对话变更",
-    icon: GitBranch,
-    run: () => store.set({ panel: "changes" }),
-  },
-  {
-    id: "terminal",
-    label: "终端",
-    description: "打开本机交互式终端",
-    icon: TerminalSquare,
-    run: () => store.set({ terminalOpen: true }),
-  },
-  {
-    id: "project",
-    label: "切换项目",
-    description: "选择本机工作目录",
-    icon: Folder,
-    run: () => store.set({ modal: { type: "directory" } }),
-  },
-  {
-    id: "search",
-    label: "搜索对话",
-    description: "查找已有聊天记录",
-    icon: Search,
-    run: () => store.set({ modal: { type: "search" } }),
-  },
-  {
-    id: "status",
-    label: "账户与用量",
-    description: "查看账户、额度和设置",
-    icon: Settings,
-    run: () => store.set({ modal: { type: "settings" } }),
-  },
-  {
-    id: "fork",
-    label: "创建分支",
-    description: "从当前对话继续另一条思路",
-    icon: GitBranch,
-    current: true,
-    run: () => store.fork(),
-  },
-  {
-    id: "rename",
-    label: "重命名对话",
-    description: "修改当前对话的名称",
-    icon: Pencil,
-    current: true,
-    run: () =>
-      store.set({ modal: { type: "rename", thread: store.get().current } }),
-  },
-  {
-    id: "delete",
-    label: "删除对话",
-    description: "删除当前对话记录",
-    icon: Trash2,
-    current: true,
-    run: () =>
-      store.set({ modal: { type: "delete", thread: store.get().current } }),
-  },
-  {
-    id: "stop",
-    label: "停止任务",
-    description: "停止当前正在执行的任务",
-    icon: Square,
-    active: true,
-    run: store.stop,
-  },
-];
-function absolute(path, cwd) {
-  const parts = (path.startsWith("/") ? path : cwd + "/" + path).split("/"),
-    out = [];
-  for (const p of parts) {
-    if (p === "..") out.pop();
-    else if (p && p !== ".") out.push(p);
-  }
-  return "/" + out.join("/");
-}
+import {
+  composerCommands,
+  commandAvailable,
+  runComposerCommand,
+  absolutePath as absolute,
+} from "./composer-commands";
+
+const icons = {
+  init: FileCode,
+  new: SquarePen,
+  model: Brain,
+  plan: ListChecks,
+  goal: ListChecks,
+  review: GitPullRequest,
+  compact: Minimize2,
+  skills: Sparkles,
+  files: Folder,
+  diff: GitBranch,
+  terminal: TerminalSquare,
+  project: Folder,
+  search: Search,
+  status: Settings,
+  fork: GitBranch,
+  rename: Pencil,
+  delete: Trash2,
+  stop: Square,
+};
+const commands = composerCommands.map((command) => ({
+  ...command,
+  icon: icons[command.id] || Settings,
+}));
 export function useComposerShortcuts(area) {
   const s = store.useStore();
   const [trigger, setTrigger] = useState(null),
@@ -170,7 +64,7 @@ export function useComposerShortcuts(area) {
     const before = text.slice(0, position),
       match = before.match(/(^|\s)([@/])([^\s@]*)$/);
     setTrigger(
-      match
+      match && (match[2] !== "/" || !before.slice(0, match.index).trim())
         ? {
             kind: match[2],
             query: match[3],
@@ -233,6 +127,12 @@ export function useComposerShortcuts(area) {
     }, 120);
     return () => clearTimeout(timer);
   }, [trigger?.kind, trigger?.query, s.cwd]);
+  useEffect(() => {
+    if (!s.draft) setTrigger(null);
+  }, [s.draft]);
+  useEffect(() => {
+    setTrigger(null);
+  }, [s.current?.id]);
   const q = trigger?.query.toLowerCase() || "";
   const matchingSkills = s.skills
     .filter((skill) =>
@@ -252,8 +152,7 @@ export function useComposerShortcuts(area) {
           ...commands
             .filter(
               (c) =>
-                (!c.current || s.current) &&
-                (!c.active || s.active[s.current?.id]) &&
+                commandAvailable(c, s) &&
                 (c.id + " " + c.label + " " + c.description)
                   .toLowerCase()
                   .includes(q),
@@ -286,6 +185,15 @@ export function useComposerShortcuts(area) {
     if (!item || !trigger) return;
     const t = trigger,
       text = store.get().draft;
+    if (item.kind === "command") {
+      const commandText = "/" + item.id + text.slice(t.end);
+      store.setDraft(commandText);
+      setTrigger(null);
+      setIndex(0);
+      area.current?.focus();
+      runComposerCommand(commandText).catch(store.report);
+      return;
+    }
     let replacement = "";
     if (item.kind === "file") {
       const file = item.file;
@@ -317,11 +225,10 @@ export function useComposerShortcuts(area) {
         t.start + replacement.length,
       );
     });
-    if (item.kind === "command")
-      Promise.resolve().then(item.run).catch(store.report);
   }
   function keydown(e) {
-    if (!trigger || e.nativeEvent.isComposing) return false;
+    if (!trigger || e.nativeEvent.isComposing || e.ctrlKey || e.metaKey)
+      return false;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -411,6 +318,7 @@ export function useComposerShortcuts(area) {
     open: !!trigger,
     activeId: items.length ? "shortcut-option-" + selected : undefined,
     detect,
+    close: () => setTrigger(null),
     keydown,
   };
 }

@@ -6,6 +6,7 @@ import { gzipSync } from "node:zlib";
 import WebSocket, { WebSocketServer } from "ws";
 import { readConfig } from "./config.mjs";
 import { readVersion } from "./version.mjs";
+import { createCompactions } from "./compaction.mjs";
 import { MAX_RPC_MESSAGE_BYTES, sendRpcText } from "./rpc-transport.mjs";
 import { createThreadNaming, generateThreadName } from "./thread-names.mjs";
 import { changesForPath, undoFileChanges } from "./file-undo.mjs";
@@ -36,6 +37,7 @@ const releasing = new Map();
 const resuming = new Map();
 const activeThreads = new Set();
 const unwrittenThreads = new Set();
+const compactions = createCompactions(broadcast);
 const undoing = new Set();
 const undoneFiles = new Map();
 const threadMethods = new Set(["thread/start", "thread/resume", "thread/fork"]);
@@ -43,6 +45,11 @@ const loadedThreadMethods = new Set([
   "turn/start",
   "thread/compact/start",
   "review/start",
+  "thread/goal/get",
+  "thread/goal/set",
+  "thread/goal/clear",
+  "thread/backgroundTerminals/list",
+  "thread/backgroundTerminals/clean",
 ]);
 let upstream;
 let ready = false;
@@ -91,10 +98,93 @@ async function resumeForWrite(threadId) {
   }
   await resuming.get(threadId);
 }
+const checkingCompactions = new Map();
+function checkCompaction(threadId) {
+  if (checkingCompactions.has(threadId))
+    return checkingCompactions.get(threadId);
+  const entry = compactions.entries.get(threadId);
+  if (!compactions.busy(threadId)) return Promise.resolve(entry);
+  const current = () =>
+    compactions.entries.get(threadId)?.id === entry.id &&
+    compactions.busy(threadId);
+  const checking = (async () => {
+    try {
+      const { thread } = await callUpstream("thread/read", {
+        threadId,
+        includeTurns: false,
+      });
+      let cursor, turn;
+      do {
+        const page = await callUpstream("thread/turns/list", {
+          threadId,
+          limit: 100,
+          itemsView: "full",
+          ...(cursor ? { cursor } : {}),
+        });
+        if (!current()) return compactions.entries.get(threadId);
+        const turnId = compactions.entries.get(threadId).turnId;
+        turn = page.data.find((candidate) =>
+          turnId
+            ? candidate.id === turnId
+            : candidate.startedAt >= Math.floor(entry.startedAt) &&
+              (candidate.status === "inProgress" ||
+                candidate.items?.some(
+                  (item) => item.type === "contextCompaction",
+                )),
+        );
+        cursor = page.nextCursor;
+      } while (!turn && cursor);
+      if (!current()) return compactions.entries.get(threadId);
+      if (turn?.status === "inProgress") {
+        await resumeForWrite(threadId);
+        if (current())
+          compactions.update(threadId, {
+            ...compactions.entries.get(threadId),
+            turnId: turn.id,
+            status: "running",
+            error: undefined,
+          });
+      } else if (turn) {
+        compactions.update(threadId, {
+          ...compactions.entries.get(threadId),
+          turnId: turn.id,
+        });
+        compactions.event("turn/completed", { threadId, turn });
+      } else if (["idle", "notLoaded"].includes(thread.status?.type)) {
+        compactions.finish(
+          threadId,
+          "unconfirmed",
+          "后端已空闲，整理结果未确认，可以重新整理。",
+        );
+      } else {
+        compactions.update(threadId, {
+          ...compactions.entries.get(threadId),
+          status: "reconnecting",
+          error: "后端仍在运行，请稍后再次检查整理状态。",
+        });
+      }
+      return compactions.entries.get(threadId);
+    } catch (error) {
+      if (current())
+        compactions.update(threadId, {
+          ...compactions.entries.get(threadId),
+          status: "reconnecting",
+          error: error.message,
+        });
+      throw error;
+    } finally {
+      checkingCompactions.delete(threadId);
+      releaseUnusedThreads();
+    }
+  })();
+  checkingCompactions.set(threadId, checking);
+  return checking;
+}
 function releaseUnusedThreads() {
   for (const [threadId, owners] of subscriptions) {
     if (
       !ready ||
+      compactions.busy(threadId) ||
       (unwrittenThreads.has(threadId) && owners.size) ||
       activeTurns.has(threadId) ||
       activeThreads.has(threadId) ||
@@ -140,6 +230,7 @@ function state() {
       projectlessRoot: config.projectlessRoot,
       questions: [...questions.values()],
       activeTurns: Object.fromEntries(activeTurns),
+      compactions: Object.fromEntries(compactions.entries),
       terminals: Object.fromEntries(terminals),
       undoneFiles: [...undoneFiles.values()],
     },
@@ -172,6 +263,9 @@ function connect() {
       send(upstream, { method: "initialized" });
       ready = true;
       broadcast(state());
+      for (const [threadId, entry] of compactions.entries)
+        if (entry.status === "reconnecting")
+          checkCompaction(threadId).catch(() => {});
       return;
     }
     if (message.method) {
@@ -209,6 +303,8 @@ function connect() {
         unwrittenThreads.delete(p.threadId);
         activeThreads.delete(p.threadId);
         activeTurns.delete(p.threadId);
+        if (message.method !== "thread/closed")
+          compactions.entries.delete(p.threadId);
       }
       if (
         message.method === "command/exec/outputDelta" &&
@@ -225,6 +321,7 @@ function connect() {
         broadcast(state());
       }
       broadcast(message);
+      compactions.event(message.method, p);
       releaseUnusedThreads();
       if (message.method === "turn/completed")
         threadNaming.schedule({ id: p.threadId });
@@ -234,6 +331,8 @@ function connect() {
     if (request) {
       clearTimeout(request.timer);
       pending.delete(message.id);
+      if (message.error && request.method === "thread/compact/start")
+        compactions.reject(request.threadId, message.id, message.error.message);
       if (request.resolve) {
         if (message.error) request.reject(new Error(message.error.message));
         else request.resolve(message.result);
@@ -257,7 +356,12 @@ function connect() {
         activeTurns.set(request.threadId, message.result.turn.id);
         activeThreads.add(request.threadId);
       }
-      if (!message.error && loadedThreadMethods.has(request.method))
+      if (
+        !message.error &&
+        ["turn/start", "thread/compact/start", "review/start"].includes(
+          request.method,
+        )
+      )
         unwrittenThreads.delete(request.threadId);
       if (request.processId && terminals.has(request.processId)) {
         terminals.get(request.processId).running = false;
@@ -298,6 +402,7 @@ function connect() {
       }),
     );
     ready = false;
+    compactions.disconnected();
     threadNaming.clear();
     for (const request of pending.values()) {
       clearTimeout(request.timer);
@@ -438,6 +543,55 @@ clients.on("connection", (client) => {
       return;
     }
     if (message.method) {
+      if (message.method === "lan/compaction/check") {
+        try {
+          send(client, {
+            id: message.id,
+            result: { compaction: await checkCompaction(threadId) },
+          });
+        } catch (error) {
+          send(client, {
+            id: message.id,
+            error: { code: -32000, message: error.message },
+          });
+        }
+        return;
+      }
+      if (
+        [
+          "turn/start",
+          "turn/steer",
+          "thread/compact/start",
+          "review/start",
+        ].includes(message.method) &&
+        compactions.busy(threadId)
+      ) {
+        send(client, {
+          id: message.id,
+          error: {
+            code: -32000,
+            message: "正在整理上下文，完成后可继续发送。",
+          },
+        });
+        return;
+      }
+      if (
+        message.method === "thread/compact/start" &&
+        (activeTurns.has(threadId) ||
+          activeThreads.has(threadId) ||
+          [...pending.values()].some(
+            (request) =>
+              request.threadId === threadId &&
+              ["turn/start", "review/start"].includes(request.method),
+          ))
+      ) {
+        send(client, {
+          id: message.id,
+          error: { code: -32000, message: "请等待当前任务结束后整理上下文。" },
+        });
+        return;
+      }
+
       if (
         ["thread/name/set", "thread/delete", "thread/archive"].includes(
           message.method,
@@ -583,10 +737,14 @@ clients.on("connection", (client) => {
           model: message.params?.model,
         }),
       });
+      if (message.method === "thread/compact/start")
+        compactions.start(threadId, id);
       if (threadId && loadedThreadMethods.has(message.method)) {
         try {
           await resumeForWrite(threadId);
         } catch (error) {
+          if (message.method === "thread/compact/start")
+            compactions.reject(threadId, id, error.message);
           clearTimeout(timer);
           if (pending.delete(id))
             send(client, {
