@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { fullAccessParams } from "./execution-policy";
 import { modelServiceTiers, resolveServiceTier } from "./service-tier";
 import { inputRequestItem } from "./question-state";
+import { readThreadHistory } from "./thread-history";
 import { isCompacting, recoverCompaction } from "./compaction";
 import { annotationMessage } from "./annotations";
 import {
@@ -625,22 +626,10 @@ export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
 export async function loadHistory(epoch = opening) {
   if (!state.current) return;
   const id = state.current.id;
-  const history = [];
-  let cursor;
-  do {
-    const page = await rpc("thread/items/list", {
-      threadId: id,
-      limit: 100,
-      sortDirection: "desc",
-      ...(cursor ? { cursor } : {}),
-    });
-    if (epoch !== opening || state.current?.id !== id) return;
-    history.push(...page.data);
-    cursor = page.nextCursor;
-  } while (cursor);
-  const map = new Map(
-    history.reverse().map((e) => [e.item.id, { ...e.item, turnId: e.turnId }]),
-  );
+  const current = () => epoch === opening && state.current?.id === id;
+  const history = await readThreadHistory(rpc, id, { current });
+  if (!current()) return;
+  const map = new Map(history.map((item) => [item.id, item]));
   for (const item of state.items) map.set(item.id, item);
   set({ items: [...map.values()] });
 }

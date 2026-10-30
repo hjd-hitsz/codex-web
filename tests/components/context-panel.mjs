@@ -46,6 +46,7 @@ export async function testContextPanel(app, requests, setResponse, emit) {
     },
   });
   let fail = false;
+  let legacy = false;
   let hold = false;
   let release;
   let view;
@@ -64,9 +65,23 @@ export async function testContextPanel(app, requests, setResponse, emit) {
         },
       };
     if (method === "thread/turns/list")
-      return { data: [{ id: "child-turn", status: "inProgress" }] };
+      return {
+        data: [
+          {
+            id: "child-turn",
+            status: "inProgress",
+            ...(params.itemsView === "full" && {
+              items: [record("b-task", "userMessage", "旧格式子代理历史").item],
+            }),
+          },
+        ],
+      };
     if (method === "thread/items/list") {
       if (fail) return { error: { message: "模拟子代理读取失败" } };
+      if (legacy)
+        return {
+          error: { message: "thread/items/list is not supported yet" },
+        };
       if (params.threadId === "agent-b")
         return { data: [record("b-task", "userMessage", "第二个子代理任务")] };
       if (!params.cursor)
@@ -330,6 +345,11 @@ export async function testContextPanel(app, requests, setResponse, emit) {
     assert(text().includes("连接恢复后自动更新"));
     await act(async () => app.set({ connected: true }));
     assert(text().includes("第二个子代理任务"));
+    legacy = true;
+    await click("刷新子代理对话");
+    assert(text().includes("旧格式子代理历史"));
+    assert(!text().includes("thread/items/list is not supported yet"));
+    legacy = false;
     await click("收起对话详情");
     assert.equal(app.get().panel, null);
     assert.equal(app.get().panelAgent, null);

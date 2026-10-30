@@ -145,6 +145,56 @@ export async function testHistory(app, requests, setResponse, emit) {
     assert.equal(historyRequests().length, beforeSwitch);
     assert.equal(app.get().current, null);
     assert.deepEqual(app.get().items, []);
+
+    const legacyTurns = Array.from({ length: 75 }, (_, index) => ({
+      id: `history-turn-${index}`,
+      status: "completed",
+      items: entries
+        .filter((entry) => entry.turnId === `history-turn-${index}`)
+        .map((entry) => entry.item),
+    })).reverse();
+    setResponse(({ method, params }) => {
+      if (method === "thread/read") return { thread };
+      if (method === "thread/items/list")
+        return {
+          error: { message: "thread/items/list is not supported yet" },
+        };
+      if (method === "thread/resume")
+        return {
+          error: { message: "thread fixture already has an active writer" },
+        };
+      if (method === "thread/turns/list") {
+        if (params.itemsView !== "full") return { data: [] };
+        const offset = Number(params.cursor || 0);
+        return {
+          data: legacyTurns.slice(offset, offset + 40),
+          nextCursor: offset === 0 ? "40" : null,
+        };
+      }
+      return { data: [] };
+    });
+    await act(async () => {
+      await app.openThread(thread.id);
+      view = create(
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(app.Conversation),
+          React.createElement(app.Composer),
+        ),
+      );
+    });
+    assert.equal(app.get().threadAccess.status, "blocked");
+    assert.equal(app.get().loading, false);
+    assert.deepEqual(
+      app.get().items.map((item) => item.id),
+      entries.map(({ item }) => item.id),
+    );
+    const legacyText = JSON.stringify(view.toJSON());
+    assert(legacyText.includes("第 1 轮请求"));
+    assert(legacyText.includes("第 75 轮回答"));
+    assert(legacyText.includes("此对话由另一端使用"));
+    assert(!legacyText.includes("暂时无法连接此对话"));
   } finally {
     holdPage = false;
     if (finishPage) finishPage();
@@ -154,6 +204,6 @@ export async function testHistory(app, requests, setResponse, emit) {
     app.set(original);
   }
   console.log(
-    "PASS 自动读取全部历史分页、完整消息展示、实时更新保留与切换隔离",
+    "PASS 全部历史分页、实时更新与切换隔离、旧对话接口回退及写入占用时查看历史",
   );
 }

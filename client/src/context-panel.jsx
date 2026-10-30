@@ -22,6 +22,7 @@ import {
 import { ReadOnlyConversation } from "./chat";
 import { ChangesPanel, FilePanel, IconButton } from "./workspace";
 import { reasoningEffortLabels } from "./reasoning-effort";
+import { readThreadHistory } from "./thread-history";
 
 export function ContextCard() {
   const s = useStore();
@@ -153,13 +154,13 @@ function SubAgentConversation({ agent }) {
             itemsView: "notLoaded",
             sortDirection: "desc",
           }),
-          pages("thread/items/list", { limit: 100, sortDirection: "asc" }),
+          readThreadHistory(rpc, agent.id, {
+            current: () => !cancelled,
+            sortDirection: "asc",
+          }),
         ]);
         if (cancelled) return;
-        const items = mergeAgentHistory(
-          records.map((entry) => ({ ...entry.item, turnId: entry.turnId })),
-          events,
-        );
+        const items = mergeAgentHistory(records, events);
         events.length = 0;
         hydrated = true;
         update({
