@@ -301,6 +301,31 @@ test(
     assert.equal(health.status, 200);
     assert.equal(health.headers.get("cache-control"), "no-store");
     assert.deepEqual(await health.json(), { ready: true, version });
+    const videoPath = join(files, "preview.MP4");
+    await writeFile(videoPath, Buffer.from([0, 1, 2, 3, 4]));
+    const video = await fetch(
+      url + "/api/media?" + new URLSearchParams({ path: videoPath }),
+      { headers: { Range: "bytes=1-3" } },
+    );
+    assert.equal(video.status, 206);
+    assert.equal(video.headers.get("content-type"), "video/mp4");
+    assert.equal(video.headers.get("content-range"), "bytes 1-3/5");
+    assert.deepEqual(
+      Buffer.from(await video.arrayBuffer()),
+      Buffer.from([1, 2, 3]),
+    );
+    const audioPath = join(files, "sound.wav");
+    await writeFile(audioPath, Buffer.from([0, 4, 5, 6]));
+    const audio = await fetch(
+      url + "/api/files?" + new URLSearchParams({ path: audioPath }),
+    );
+    assert.equal(audio.status, 200);
+    assert.equal(audio.headers.get("content-type"), "audio/wav");
+    assert(audio.headers.get("content-disposition").startsWith("inline;"));
+    assert.deepEqual(
+      Buffer.from(await audio.arrayBuffer()),
+      Buffer.from([0, 4, 5, 6]),
+    );
     assert.equal(clientVersion, version.displayVersion);
     assert.equal(await (await fetch(url)).text(), "<h1>Codex Web test</h1>");
     await writeFile(join(files, "index.html"), "<h1>Updated build</h1>");

@@ -16,8 +16,9 @@ import {
   Presentation,
   Terminal,
 } from "lucide-react";
-import { set } from "./store";
+import { set, useStore } from "./store";
 import { localImagePath } from "./image-source";
+import { filePresentation } from "../../server/src/file-types.mjs";
 
 function PythonIcon(props) {
   return (
@@ -61,19 +62,32 @@ function linkIcon(href) {
   if (/^(md|mdx|txt|rst|pdf|docx?|odt|rtf)$/.test(extension)) return FileText;
   if (/^(csv|tsv|xlsx?|ods|parquet)$/.test(extension)) return FileSpreadsheet;
   if (/^(pptx?|odp|key)$/.test(extension)) return Presentation;
-  if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp|tiff?)$/.test(extension))
-    return FileImage;
-  if (/^(mp3|wav|flac|ogg|m4a|aac)$/.test(extension)) return FileAudio2;
-  if (/^(mp4|webm|mov|mkv|avi)$/.test(extension)) return FileVideo2;
+  const presentation = filePresentation(path);
+  if (presentation?.kind === "image") return FileImage;
+  if (presentation?.kind === "audio") return FileAudio2;
+  if (presentation?.kind === "video") return FileVideo2;
   if (/^(zip|tar|gz|tgz|xz|bz2|7z|rar)$/.test(extension)) return FileArchive;
   if (/^(sh|bash|zsh|fish|ps1)$/.test(extension)) return Terminal;
   return File;
 }
 
-export function MessageLink({ href, title, children, node, cwd }) {
-  if (cwd && href && !href.startsWith("#"))
-    href = localImagePath(href, cwd) || href;
-  const Icon = linkIcon(href || "");
+export function MessageLink({
+  href,
+  title,
+  children,
+  node,
+  cwd: baseDirectory,
+}) {
+  const { current, cwd, defaultCwd } = useStore();
+  const Icon = linkIcon(
+    (href || "").replace(/^file:\/\/(?:localhost)?(?=\/)|^sandbox:(?=\/)/i, ""),
+  );
+  if (href && !href.startsWith("#"))
+    href =
+      localImagePath(
+        href,
+        baseDirectory ?? (current?.cwd || cwd || defaultCwd),
+      ) || href;
   const imageOnly = node?.children?.every(
     (child) =>
       child.tagName === "img" || (child.type === "text" && !child.value.trim()),

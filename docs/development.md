@@ -84,6 +84,8 @@ npm run check
 
 工具记录浏览器回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/tool-activities.mjs`。脚本在独立浏览器配置中注入 `tests/fixtures/tool-activities.mjs` 的模拟历史，验证图片直接显示、点击放大与焦点恢复、可读网页操作和工具结果，以及深浅主题、80% 至 200% 缩放与窄屏；截图和构建来源写入 `.cache/tool-activities-browser/after`。修改前对照先把 `client/dist` 与 `build-info.json` 分别复制到 `.cache/tool-activities-before/dist` 与 `.cache/tool-activities-before/build-info.json`，再用 `BROWSER_BEFORE=1` 运行同一脚本，结果写入 `before` 目录。
 
+文件打开回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/files.mjs`，本机需有支持 H.264 编码的 `ffmpeg`。脚本生成临时音视频、PDF、BMP 和二进制样本，注入隔离的模拟历史，实际点击并验证播放、进度跳转、媒体切换后的资源清理、图片与 PDF 预览、文件下载字节、文本编辑和失败重试，覆盖深浅主题与窄屏。截图、下载样本和构建来源保存在 `.cache/file-preview-browser/after`。修改前对照将旧构建及来源复制到 `.cache/file-preview-before/dist` 与 `.cache/file-preview-before/build-info.json`，以 `BROWSER_BEFORE=1` 分别记录音频的二进制提示与 PDF 被当作源码显示的结果。`server/tests/file-content.test.mjs` 覆盖 MIME、附件文件名、原始字节、Range、大文件及取消读取；桥接测试验证 HTTP 路由，文件面板组件测试覆盖类型切换、保存保护、草稿与迟到读取隔离。
+
 单独验证发行包时执行：
 
 ```bash

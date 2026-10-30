@@ -48,6 +48,12 @@ export function imageDataUrl(path, dataBase64) {
 
 export function messageUrlTransform(value, key, node) {
   if (
+    node.tagName === "a" &&
+    key === "href" &&
+    (/^file:\/\/(?:localhost)?\//i.test(value) || value.startsWith("sandbox:/"))
+  )
+    return value;
+  if (
     node.tagName === "img" &&
     key === "src" &&
     (/^file:\/\/(?:localhost)?\//i.test(value) ||

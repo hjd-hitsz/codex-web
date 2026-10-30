@@ -1,5 +1,6 @@
 import http from "node:http";
 import { createSummaryTranslationHandler } from "./summary-translation.mjs";
+import { serveFile } from "./file-content.mjs";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -424,6 +425,10 @@ const staticCache = new Map();
 const translateSummary = createSummaryTranslationHandler();
 const server = http.createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
+  if (["/api/files", "/api/media"].includes(path)) {
+    await serveFile(request, response);
+    return;
+  }
   if (path === "/api/translate") {
     await translateSummary(request, response);
     return;

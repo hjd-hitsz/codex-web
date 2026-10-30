@@ -63,7 +63,7 @@ Node.js 网页桥接服务
 
 `rich-text.jsx` 的 `RichText` 供消息和文件预览共用，使用 React Markdown 渲染 GFM、数学公式与代码高亮，将 `mermaid` 代码块交给 `mermaid-block.jsx`。图表源码稳定 250 毫秒后按需加载 Mermaid，`mermaid-renderer.js` 串行配置主题并绘制 SVG，使用 `securityLevel: strict` 和 `suppressErrorRendering: true`，临时绘制节点在成功或失败后清理。图表跟随网页及系统的深浅主题；源码或主题变化时忽略旧请求的迟到结果。绘制期间和解析失败时保留源码，成功后提供图表与源码切换及源码复制。渲染器和各图表模块随网页打包，通过本站加载。
 
-`workspace.jsx` 的文件面板对 `.md`、`.markdown`、`.mdown`、`.mkd` 默认显示 Markdown 预览，扩展名忽略大小写。源码与预览共用当前编辑文本，切换时保留未保存内容，重新进入编辑器时使用当前文本创建文档；保存、关闭和打开其他文件继续执行原有的保存与放弃确认。`RichText` 通过目录上下文将文件所在目录传给链接和图片组件，以此解析相对资源，消息图片继续使用对话工作目录。Markdown 保留 React Markdown 的 URL 过滤规则，HTML 内容按安全的默认规则处理。
+`workspace.jsx` 的文件面板对 `.md`、`.markdown`、`.mdown`、`.mkd` 默认显示 Markdown 预览，扩展名忽略大小写。源码与预览共用当前编辑文本，切换时保留未保存内容，重新进入编辑器时使用当前文本创建文档；保存、关闭和打开其他文件继续执行原有的保存与放弃确认。`RichText` 通过目录上下文将文件所在目录传给链接和图片组件，以此解析相对资源，消息图片继续使用对话工作目录。Markdown 放行本机文件链接和图片 URI，其他地址沿用 React Markdown 的 URL 过滤规则，HTML 内容按安全的默认规则处理。
 
 `code-editor.jsx` 负责 CodeMirror 编辑器，`editor-language.js` 按扩展名及 `CMakeLists.txt`、`Dockerfile`、`.env` 等文件名选择语法。原生解析器处理 JavaScript / TypeScript、Python、C / C++、JSON、Markdown、HTML / XML 与 CSS，流式解析器补充 Shell、YAML、TOML、Rust、Go、Java、C#、SQL、CMake、Dockerfile、Lua 和属性配置。未知类型继续提供纯文本编辑。编辑器与 Markdown 代码块共用语法颜色变量，随浅色、深色及系统主题变化。
 
@@ -77,7 +77,7 @@ Node.js 网页桥接服务
 
 编辑器外观依据：同版 `app-initial-a190b16fc630.js` 的 `KXn` 创建选区批注编辑器，将宽度设为 294 像素，创建状态初始高度为 44 像素，并复用共享编辑器。`app-initial-1e5ee25fb4ec.js` 的 `eCr` 定义 22 像素圆角、单一表面、细描边和轻阴影，`ACr` 使用无内边框的输入区与紧凑图标操作；文本增多后从单行浮层展开。网页按相同层次组织内容，输入和草稿提交继续复用网页既有流程。
 
-`message-image.jsx` 处理 Markdown 图片和历史 `localImage` 附件。`image-source.js` 将绝对路径、`file:`、`sandbox:` 以及相对工作目录的图片引用解析为本机路径；组件通过已有的 `fs/readFile` RPC 读取 Base64 数据，并按图片类型构造 Data URL。相对路径优先使用当前对话的 `cwd`，随后使用已选目录或默认目录。加载失败或浏览器解码失败时显示提示和重试按钮，断线后随重连重读，路径切换及卸载后忽略迟到响应。HTTP、HTTPS 与协议相对地址直接交给浏览器；Markdown URL 过滤仅对图片放行本地 URI 和指定类型的 Base64 图片，其余沿用 React Markdown 的默认规则。
+`message-image.jsx` 处理 Markdown 图片和历史 `localImage` 附件。`image-source.js` 将绝对路径、`file:`、`sandbox:` 以及相对工作目录的图片引用解析为本机路径；组件通过已有的 `fs/readFile` RPC 读取 Base64 数据，并按图片类型构造 Data URL。相对路径优先使用当前对话的 `cwd`，随后使用已选目录或默认目录。加载失败或浏览器解码失败时显示提示和重试按钮，断线后随重连重读，路径切换及卸载后忽略迟到响应。HTTP、HTTPS 与协议相对地址直接交给浏览器；Markdown URL 过滤对本机文件链接和图片放行本地 URI，对图片额外放行指定类型的 Base64 数据，其余沿用 React Markdown 的默认规则。
 
 消息图片统一放在原生按钮中，以最大 320 × 240 像素的等比缩略图显示。点击后由 `image-viewer.jsx` 通过 React Portal 将原生 `dialog` 挂到页面根部，使用 `showModal()` 管理模态焦点和背景交互。大图默认适应窗口，支持点击图片或工具栏切换到可滚动的原始尺寸；关闭按钮、Esc 和空白区域均可关闭，关闭后将焦点还给仍在页面中的缩略图。图片地址变化时关闭旧预览，流式正文更新保持当前预览；图片按钮拦截外层链接的默认跳转。
 
@@ -148,6 +148,10 @@ Node.js 网页桥接服务
 `ProcessDuration` 在工作过程标题内显示计时。运行时每秒根据轮次开始时间更新已用时，完成、失败或中断后固定显示总耗时；展开和折叠共用同一个计时组件，结束和卸载后清理计时器。`turn-timing.js` 优先采用后端的 `durationMs`，其次用秒级 `startedAt` 与 `completedAt` 相减；缺少完整时间记录的历史省略耗时。`store.js` 将现有 `thread/turns/list` 响应中的时间字段按对话 ID、轮次 ID 保存到 `turnTimings`，复用排序时读取的全部历史分页。开始、完成通知和发送响应同步实时记录，缺少时间字段的实时通知使用本机接收时间；后续后端时间记录可补齐精度，缺省字段保留已有记录。
 
 ## 桥接服务
+
+`file-types.mjs` 供前后端共用文件类型与 MIME 定义。`file-preview.jsx` 使用原生图片、音频、视频和 PDF 预览，提供原文件下载及加载失败重试；Office 文档、压缩包和其他已识别二进制文件直接显示下载入口。未知扩展名通过 `fs/readFile` 读取后检查 UTF-8 和控制字节，二进制内容转为下载，普通文本继续使用编辑器。预览跳过文本保存；媒体在切换、关闭或重试时暂停并清除地址，终止旧资源读取。文件打开保留未保存修改的确认和请求序号隔离。链接按显式目录、当前对话目录、所选目录及默认目录解析，本机 `file:` 和 `sandbox:` 链接也进入文件面板，Markdown 文件内的相对链接以文件目录为准。
+
+`file-content.mjs` 通过本站 `/api/files?path=...` 流式读取绝对路径文件，保留 `/api/media` 作为已有视频地址的入口；开发服务器代理两种路径。GET 和 HEAD 返回实际 MIME、文件长度及 `Accept-Ranges: bytes`，单段 Range 支持起止、开放末尾及后缀，分别返回 206 或带文件大小的 416。原生预览类型使用 inline，其他内容和 `download=1` 请求使用 attachment，并通过编码后的 `filename*` 保留文件名；HTML 等源文件按二进制附件下载。响应使用 `no-store`、`nosniff`，SVG 额外限制脚本和外部资源。读取使用背压和连接取消清理，下载保留原始字节；浏览器自身的容器、编码及 PDF 阅读能力决定原生预览效果。
 
 HTTP 服务提供构建资源和健康检查，支持构建目录根部的 JavaScript 与 CSS 文件，包括 Mermaid 按需加载的分块；资源路径限于单个文件名，缺失资源返回 404。资源使用 gzip 传输，并按修改时间刷新内存缓存。WebSocket 网关为不同浏览器客户端重新分配请求 ID，再将官方后端的响应路由回发起客户端；通知广播给所有已连接网页。
 

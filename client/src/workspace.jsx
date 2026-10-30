@@ -27,6 +27,11 @@ import { CodeEditor } from "./code-editor";
 import { isMarkdownFile } from "./editor-language";
 import { diffRows, fileChangeHighlights } from "./file-changes";
 import { RichText } from "./rich-text";
+import { FilePreview } from "./file-preview";
+import {
+  filePresentation,
+  decodeTextFile,
+} from "../../server/src/file-types.mjs";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -38,7 +43,6 @@ import {
   report,
   notice,
   basename,
-  b64decode,
   b64encode,
   addAttachment,
   uid,
@@ -224,7 +228,7 @@ export function FilePanel() {
     [original, setOriginal] = useState(""),
     [loading, setLoading] = useState(false),
     [filter, setFilter] = useState(""),
-    [image, setImage] = useState(null),
+    [fileKind, setFileKind] = useState(null),
     [preview, setPreview] = useState(true),
     [change, setChange] = useState(null),
     [fileChange, setFileChange] = useState(null);
@@ -273,35 +277,31 @@ export function FilePanel() {
     )
       return;
     const request = ++opening.current;
+    const presentation = filePresentation(p);
+    if (presentation) {
+      setFileKind(presentation.kind);
+      setFile(p);
+      setText("");
+      setOriginal("");
+      setChange(null);
+      setFileChange(null);
+      return;
+    }
     try {
       const r = await rpc("fs/readFile", { path: p });
       if (request !== opening.current) return;
-      if (/\.(png|jpe?g|gif|webp|svg)$/i.test(p)) {
-        const ext = p
-          .split(".")
-          .at(-1)
-          .replace("jpg", "jpeg")
-          .replace("svg", "svg+xml");
-        setImage("data:image/" + ext + ";base64," + r.dataBase64);
-        setFile(p);
-        setText("");
-        setOriginal("");
-        setChange(null);
-        setFileChange(null);
-        return;
-      }
-      const body = b64decode(r.dataBase64);
-      if (body.includes("\0")) {
-        notice("这是二进制文件，请在本机对应应用中打开。");
-        return;
-      }
-      setImage(null);
+      const body = decodeTextFile(
+        Uint8Array.from(atob(r.dataBase64), (character) =>
+          character.charCodeAt(0),
+        ),
+      );
+      setFileKind(body === null ? "download" : null);
       setFile(p);
-      setText(body);
-      setOriginal(body);
+      setText(body ?? "");
+      setOriginal(body ?? "");
       setPreview(!selectedChange);
       setChange(null);
-      setFileChange(selectedChange);
+      setFileChange(body === null ? null : selectedChange);
     } catch (e) {
       if (request === opening.current) report(e);
     }
@@ -348,12 +348,12 @@ export function FilePanel() {
     const key = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s" && file) {
         e.preventDefault();
-        if (!change) save();
+        if (!change && !fileKind) save();
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [file, text, change]);
+  }, [file, text, change, fileKind]);
   return (
     <>
       <div className="panel-heading">
@@ -446,7 +446,7 @@ export function FilePanel() {
                 />
               </>
             )}
-            {markdownFile && !image && (
+            {markdownFile && !fileKind && (
               <IconButton
                 icon={preview ? Code : Eye}
                 title={preview ? "编辑 Markdown 源码" : "预览 Markdown"}
@@ -470,7 +470,7 @@ export function FilePanel() {
                 notice("已加入消息附件");
               }}
             />
-            {!image && (
+            {!fileKind && (
               <IconButton
                 icon={Save}
                 title="保存文件"
@@ -479,10 +479,10 @@ export function FilePanel() {
               />
             )}
           </div>
-          {image ? (
-            <div className="image-preview">
-              <img src={image} />
-            </div>
+          {fileKind ? (
+            s.panel === "files" && (
+              <FilePreview key={file} path={file} kind={fileKind} />
+            )
           ) : markdownFile && preview ? (
             <div
               className="file-markdown-preview"

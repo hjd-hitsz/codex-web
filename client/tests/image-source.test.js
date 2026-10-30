@@ -56,7 +56,7 @@ test("图片 MIME 类型覆盖 JPEG 与 SVG，保留原始文件数据", () => {
   );
 });
 
-test("Markdown 仅为图片放行本地 URI 和图片数据，其他地址沿用默认过滤", () => {
+test("Markdown 为本地文件链接和图片放行本地 URI，数据 URL 仅允许指定图片类型", () => {
   const image = { tagName: "img" };
   const link = { tagName: "a" };
   for (const value of [
@@ -74,7 +74,14 @@ test("Markdown 仅为图片放行本地 URI 和图片数据，其他地址沿用
     "file://remote/tmp/chart.png",
   ])
     assert.equal(messageUrlTransform(value, "src", image), "");
-  assert.equal(messageUrlTransform("file:///tmp/chart.png", "href", link), "");
+  for (const value of ["file:///tmp/chart.png", "sandbox:/mnt/data/report.pdf"])
+    assert.equal(messageUrlTransform(value, "href", link), value);
+  for (const value of [
+    "file://remote/tmp/chart.png",
+    "javascript:alert(1)",
+    "data:text/html;base64,AQ==",
+  ])
+    assert.equal(messageUrlTransform(value, "href", link), "");
   assert.equal(
     messageUrlTransform("https://example.com", "href", link),
     "https://example.com",

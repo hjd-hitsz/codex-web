@@ -324,6 +324,111 @@ export async function testFilePanel(app, requests, setResponse) {
       button("文件源码").props["data-change-diff"],
       markdownChange.diff,
     );
+    discard = false;
+    await act(async () =>
+      button("文件源码").props.onChange({ target: { value: "# 未保存文档" } }),
+    );
+    await open("/file-fixture/训练 #1.MP4");
+    assert.equal(view.root.findAllByType("video").length, 0);
+    assert.equal(button("文件源码").props.value, "# 未保存文档");
+    discard = true;
+    const videoReads = requests.filter(
+      (r) => r.method === "fs/readFile",
+    ).length;
+    await open("/file-fixture/训练 #1.MP4");
+    assert.equal(
+      requests.filter((r) => r.method === "fs/readFile").length,
+      videoReads,
+    );
+    let video = view.root.findByType("video");
+    assert.equal(
+      new URL(video.props.src, "http://fixture").searchParams.get("path"),
+      "/file-fixture/训练 #1.MP4",
+    );
+    assert.equal(video.props.controls, true);
+    assert.equal(video.props.playsInline, true);
+    assert.equal(
+      view.root.findAllByProps({ "aria-label": "保存文件" }).length,
+      0,
+    );
+    const writes = requests.filter((r) => r.method === "fs/writeFile").length;
+    listeners.get("keydown")({ ctrlKey: true, key: "s", preventDefault() {} });
+    assert.equal(
+      requests.filter((r) => r.method === "fs/writeFile").length,
+      writes,
+    );
+    await act(async () => video.props.onError());
+    assert(JSON.stringify(view.toJSON()).includes("加载失败"));
+    await act(async () =>
+      view.root
+        .findByProps({ className: "file-preview-error" })
+        .findByType("button")
+        .props.onClick(),
+    );
+    assert(!JSON.stringify(view.toJSON()).includes("加载失败"));
+    await act(async () => app.set({ panel: null }));
+    assert.equal(view.root.findAllByType("video").length, 0);
+    await act(async () => app.set({ panel: "files" }));
+    assert.equal(view.root.findAllByType("video").length, 1);
+    await open("/file-fixture/other.webm");
+    video = view.root.findByType("video");
+    assert.equal(
+      new URL(video.props.src, "http://fixture").searchParams.get("path"),
+      "/file-fixture/other.webm",
+    );
+    const slowRead = open("/file-fixture/slow.mjs");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await open("/file-fixture/last.mp4");
+    await act(async () =>
+      finishRead({ dataBase64: app.b64encode("late text") }),
+    );
+    await slowRead;
+    assert.equal(view.root.findAllByType("textarea").length, 0);
+    assert(view.root.findByType("video").props.src.includes("last.mp4"));
+    for (const [path, tag] of [
+      ["/file-fixture/audio.FLAC", "audio"],
+      ["/file-fixture/photo.AVIF", "img"],
+      ["/file-fixture/report.PDF", "object"],
+    ]) {
+      const reads = requests.filter((r) => r.method === "fs/readFile").length;
+      await open(path);
+      assert(view.root.findByType(tag));
+      assert.equal(
+        requests.filter((r) => r.method === "fs/readFile").length,
+        reads,
+      );
+      assert.equal(view.root.findAllByType("textarea").length, 0);
+      assert.equal(
+        view.root.findAllByProps({ "aria-label": "保存文件" }).length,
+        0,
+      );
+    }
+    for (const path of [
+      "/file-fixture/archive.zip",
+      "/file-fixture/data.xlsx",
+      "/file-fixture/slides.pptx",
+      "/file-fixture/document.docx",
+    ]) {
+      await open(path);
+      const download = view.root.findByProps({ className: "file-download" });
+      assert.equal(
+        new URL(download.props.href, "http://fixture").searchParams.get("path"),
+        path,
+      );
+      assert.equal(
+        new URL(download.props.href, "http://fixture").searchParams.get(
+          "download",
+        ),
+        "1",
+      );
+      assert.equal(view.root.findAllByType("textarea").length, 0);
+    }
+    files.set("/file-fixture/unknown.data", "\0binary");
+    await open("/file-fixture/unknown.data");
+    assert(view.root.findByProps({ className: "file-download" }));
+    assert.equal(view.root.findAllByType("textarea").length, 0);
+    await open(documentPath);
+    assert.equal(view.root.findByType("h1").props.children, "修改后的文档");
     console.log(
       "PASS 文件侧栏区分差异片段、全文变更与普通源文件，保留草稿、正文保存及迟到读取隔离，以及 Markdown 预览与源码编辑",
     );

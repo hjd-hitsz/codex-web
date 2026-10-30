@@ -2675,18 +2675,67 @@ select option {
   font-size: 0.769231rem;
   white-space: nowrap;
 }
-.image-preview {
-  padding: 1.538462rem;
-  overflow: auto;
+.file-preview {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.769231rem;
+  padding: 1rem;
+  overflow: auto;
 }
-.image-preview img {
-  max-width: 100%;
+.file-preview img,
+.file-preview video {
+  width: 100%;
+  min-height: 0;
   max-height: 100%;
   object-fit: contain;
+  border-radius: 0.615385rem;
+}
+.file-preview video {
+  background: #000;
+}
+.file-preview img {
+  width: auto;
+  max-width: 100%;
+}
+.file-preview audio {
+  width: 100%;
+}
+.file-preview object {
+  flex: 1;
+  width: 100%;
+  min-height: 12rem;
+  border: 0;
+}
+.file-download-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--muted);
+  text-align: center;
+}
+.file-preview-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.615385rem;
+  font-size: 0.923077rem;
+  text-align: center;
+}
+.file-preview a {
+  color: var(--link);
+}
+.file-download {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.384615rem;
 }
 .panel-tabs {
   display: flex;

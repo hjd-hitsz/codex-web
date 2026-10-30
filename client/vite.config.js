@@ -21,6 +21,8 @@ export default defineConfig(({ mode, command }) => {
         "/rpc": { target, ws: true },
         "/healthz": { target },
         "/api/translate": { target },
+        "/api/media": { target },
+        "/api/files": { target },
       },
     },
     build: {
