@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useId } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   PanelLeft,
@@ -122,7 +123,35 @@ function ThreadMenu({ thread, onClose }) {
 }
 function ThreadRow({ thread }) {
   const s = useStore(),
-    [menu, show] = useState(false);
+    [menu, show] = useState(false),
+    [tooltip, setTooltip] = useState(null);
+  const tooltipId = useId();
+  const title = titleOf(thread);
+  const showTitle = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTooltip({
+      left: rect.left,
+      ...(rect.bottom < window.innerHeight / 2
+        ? { top: rect.bottom }
+        : { bottom: window.innerHeight - rect.top }),
+    });
+  };
+  const titleVisible = !!tooltip;
+  useEffect(() => {
+    if (!titleVisible) return;
+    const dismiss = () => setTooltip(null);
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") dismiss();
+    };
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [titleVisible]);
   const archiveLabel = s.archived ? "恢复对话" : "归档对话";
   const now = Date.now() / 1000,
     diff = now - threadTime(thread);
@@ -143,8 +172,15 @@ function ThreadRow({ thread }) {
     >
       <button
         className="thread-link"
-        title={titleOf(thread)}
-        onClick={() => openThread(thread.id)}
+        aria-describedby={tooltip ? tooltipId : undefined}
+        onMouseEnter={showTitle}
+        onMouseLeave={() => setTooltip(null)}
+        onFocus={showTitle}
+        onBlur={() => setTooltip(null)}
+        onClick={() => {
+          setTooltip(null);
+          openThread(thread.id);
+        }}
       >
         {s.active[thread.id] ? (
           <span className="pulse-dot" />
@@ -153,11 +189,23 @@ function ThreadRow({ thread }) {
         ) : (
           <span className="thread-indent" />
         )}
-        <span>{titleOf(thread)}</span>
+        <span>{title}</span>
         <small title={thread.completedAt == null ? "创建时间" : "最近完成时间"}>
           {date}
         </small>
       </button>
+      {tooltip &&
+        createPortal(
+          <div
+            id={tooltipId}
+            role="tooltip"
+            className="thread-title-tooltip"
+            style={tooltip}
+          >
+            {title}
+          </div>,
+          document.body,
+        )}
       <div className="thread-actions">
         <button
           title={archiveLabel}
