@@ -3,6 +3,7 @@
   "version": "2.4.0",
   "type": "module",
   "description": "基于本机 Codex app-server 的浏览器客户端",
+  "license": "GPL-3.0-only",
   "engines": {
     "node": ">=24"
   },
@@ -12,6 +13,7 @@
   "files": [
     "build-info.json",
     "CHANGELOG.md",
+    "LICENSE",
     "bin/",
     "client/dist/",
     "server/src/",

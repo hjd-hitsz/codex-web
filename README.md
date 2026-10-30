@@ -107,3 +107,9 @@ codex-web service restart-when-idle
 - [数据保存与迁移](docs/deployment.md#数据保存与迁移)：数据位置、摘要翻译与模型用量说明。
 - [开发者指南](docs/development.md)：从源码运行、参与开发和验证修改。
 - [变更日志](CHANGELOG.md)：各版本的新增功能、改进与修复。
+
+## 许可证
+
+Copyright (C) 2026 Codex Web contributors.
+
+Codex Web 采用 [GNU General Public License v3.0](LICENSE)（SPDX：`GPL-3.0-only`）发布。你可以按 GNU GPL 第 3 版的条款使用、复制、修改和分发本项目。担保与责任限制见许可证正文，第三方依赖沿用各自的许可证。

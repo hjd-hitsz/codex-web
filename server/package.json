@@ -2,6 +2,7 @@
   "name": "@codex-web/server",
   "version": "2.4.0",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
   "dependencies": {
     "ws": "8.22.0"

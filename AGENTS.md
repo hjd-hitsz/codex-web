@@ -2,6 +2,8 @@
 
 ## 结构和入口
 
+项目采用 GNU GPL v3.0（`GPL-3.0-only`），许可证正文保存在根目录 `LICENSE`。根包、工作区包和锁文件中的许可证标识保持一致，README 保留许可证入口；发行包包含完整许可证正文。
+
 本仓库是 Codex Web 的独立源码项目。前端位于 `client`，桥接服务位于 `server`，维护脚本位于 `scripts`。生产服务直接读取 `client/dist`，支持其根部的 JavaScript 与 CSS 分块；增加按需加载功能时验证资源路由和发行包中的对应分块。依赖通过根目录 npm workspaces 和单一 `package-lock.json` 管理。
 
 全局 npm 命令入口为 `bin/codex-web.mjs`。发行包由根 `package.json` 的 `files` 白名单控制，`prepack` 构建前端。全局安装的配置放在用户配置目录，与 npm 包分离；源码运行继续读取项目根 `.env`。修改安装和分发逻辑时维护两种运行方式，保留已有 Codex 后端服务及用户配置。
