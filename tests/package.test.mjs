@@ -31,6 +31,9 @@ test(
       "client/dist/app.js",
       "client/dist/mermaid.core.js",
       "client/dist/style.css",
+      "client/dist/favicon.ico",
+      "client/dist/favicon.png",
+      "client/dist/apple-touch-icon.png",
       "build-info.json",
       "server/src/version.mjs",
       "CHANGELOG.md",
@@ -148,7 +151,30 @@ test(
       await delay(20);
     }
     assert.deepEqual(initialized, { ready: true, version });
-    assert.match(await (await fetch(url)).text(), /<html/);
+    const html = await (await fetch(url)).text();
+    assert.match(html, /<html/);
+    for (const [name, type, size] of [
+      ["favicon.ico", "image/x-icon", null],
+      ["favicon.png", "image/png", 96],
+      ["apple-touch-icon.png", "image/png", 180],
+    ]) {
+      assert.ok(html.includes(`href="/${name}"`), name);
+      const icon = await fetch(url + "/" + name);
+      assert.equal(icon.status, 200, name);
+      assert.equal(icon.headers.get("content-type"), type, name);
+      const bytes = Buffer.from(await icon.arrayBuffer());
+      assert.deepEqual(
+        bytes,
+        await readFile(join(root, "client/public", name)),
+      );
+      if (size) {
+        assert.equal(bytes.readUInt32BE(16), size, name);
+        assert.equal(bytes.readUInt32BE(20), size, name);
+      } else {
+        assert.equal(bytes.readUInt16LE(2), 1);
+        assert.equal(bytes.readUInt16LE(4), 3);
+      }
+    }
     const script = await fetch(url + "/app.js");
     assert.equal(script.status, 200);
     assert.ok((await script.text()).includes(version.displayVersion));

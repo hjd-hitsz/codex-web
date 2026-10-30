@@ -28,6 +28,7 @@
   "scripts": {
     "dev": "npm run dev --workspace @codex-web/client",
     "build": "npm run build --workspace @codex-web/client",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "prepack": "npm run build",
     "start": "node --env-file-if-exists=.env server/src/server.mjs",
     "start:backend": "node --env-file-if-exists=.env scripts/start-backend.mjs",

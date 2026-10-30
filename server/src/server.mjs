@@ -416,6 +416,9 @@ const files = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
+  ["/favicon.ico", ["favicon.ico", "image/x-icon"]],
+  ["/favicon.png", ["favicon.png", "image/png"]],
+  ["/apple-touch-icon.png", ["apple-touch-icon.png", "image/png"]],
 ]);
 const staticCache = new Map();
 const translateSummary = createSummaryTranslationHandler();

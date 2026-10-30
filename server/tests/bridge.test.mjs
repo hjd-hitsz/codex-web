@@ -33,6 +33,16 @@ test(
       "export const diagram = 1;",
     );
     await writeFile(join(files, "diagram-theme.css"), "svg { color: black; }");
+    const icons = [
+      ["favicon.ico", "image/x-icon"],
+      ["favicon.png", "image/png"],
+      ["apple-touch-icon.png", "image/png"],
+    ];
+    for (const [name] of icons)
+      await writeFile(
+        join(files, name),
+        await readFile(new URL(`../../client/public/${name}`, import.meta.url)),
+      );
     const desktopStatePath = join(files, ".codex-global-state.json");
     const scratch = join(files, "documents", "2026-10-26", "scratch");
     await writeFile(
@@ -319,9 +329,27 @@ test(
       "text/css; charset=utf-8",
     );
     assert.equal(await diagramStyle.text(), "svg { color: black; }");
+    for (const [name, type] of icons) {
+      const icon = await fetch(url + "/" + name, {
+        headers: { "Accept-Encoding": "gzip" },
+      });
+      assert.equal(icon.status, 200, name);
+      assert.equal(icon.headers.get("content-type"), type, name);
+      assert.equal(icon.headers.get("content-encoding"), "gzip", name);
+      assert.equal(icon.headers.get("cache-control"), "no-store", name);
+      assert.deepEqual(
+        Buffer.from(await icon.arrayBuffer()),
+        await readFile(join(files, name)),
+        name,
+      );
+    }
     await rm(join(files, "mermaid.core.js"));
+    await rm(join(files, "favicon.ico"));
     for (const path of [
       "/mermaid.core.js",
+      "/favicon.ico",
+      "/nested/favicon.png",
+      "/missing.png",
       "/missing.js",
       "/%2e%2e%2foutside.js",
       "/nested/chunk.js",
