@@ -5,6 +5,7 @@ import { create } from "react-test-renderer";
 import { setTimeout as delay } from "node:timers/promises";
 import { testMermaid } from "./mermaid.mjs";
 import { testMessageImages } from "./message-image.mjs";
+import { testMarkdownHtml } from "./markdown-html.mjs";
 import { testToolActivities } from "./tool-activities.mjs";
 import { testThreadAccess } from "./thread-access.mjs";
 import { testThreadArchive } from "./thread-archive.mjs";
@@ -135,6 +136,7 @@ await testMermaid(app);
       requests,
       (respond) => (responseFor = respond),
     );
+    await testMarkdownHtml(app, requests, (respond) => (responseFor = respond));
     await testToolActivities(
       app,
       requests,

@@ -1,6 +1,6 @@
 # 部署与维护
 
-本文面向安装和运行 Codex Web 的使用者，说明发行包安装、配置、服务管理、升级与故障处理。网页操作见 [README](../README.md)。
+本文面向安装和运行 Codex Web 的使用者，说明发行包安装、配置、服务管理、升级与故障处理。界面预览与快速开始见 [README](../README.md)。
 
 ## 安装发行包
 
@@ -108,6 +108,7 @@ codex-web service restart-when-idle
 - “未分类”对话的文件位于 `CODEX_HOME/codex-web/workspaces/chat-XXXXXX`，首次发送时分配；未设置 `CODEX_HOME` 时位于 `~/.codex/codex-web/workspaces`。迁移电脑时，可随 Codex 配置目录一起保留。
 - 网页配置 `.env` 与新建后端服务使用的 `.env.backend` 位于用户配置目录，迁移时应一并保留；已有后端服务的配置按原部署方式迁移。
 - 摘要翻译由服务所在电脑调用免费、免认证的 TranSmart 服务，浏览器仅访问当前网页服务；待译摘要会发送至 TranSmart，代码、路径和链接在发送前替换为占位符。成功译文缓存在当前标签页会话中，刷新页面和切换对话继续复用，关闭标签页或浏览器后清空。
+- 自动对话标题使用 Codex 模型，会产生少量额外模型用量。
 
 ## 故障定位
 

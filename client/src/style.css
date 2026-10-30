@@ -952,6 +952,10 @@ p {
   object-fit: contain;
   border-radius: inherit;
 }
+.message-image-button picture {
+  display: block;
+  max-width: 100%;
+}
 .image-viewer {
   position: fixed;
   inset: 0;
@@ -1301,6 +1305,15 @@ p {
 .markdown p {
   line-height: inherit;
   margin: 1em 0;
+}
+.markdown details {
+  margin-block: 1em;
+}
+.markdown summary {
+  cursor: pointer;
+}
+.markdown details[open] > summary {
+  margin-bottom: 0.5em;
 }
 .markdown .message-link {
   color: var(--link);

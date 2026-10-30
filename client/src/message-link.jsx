@@ -100,7 +100,30 @@ export function MessageLink({
       target="_blank"
       rel="noreferrer"
       onClick={(event) => {
-        if (href?.startsWith("/") && !href.startsWith("//")) {
+        if (href?.startsWith("#")) {
+          event.preventDefault();
+          const root = event.currentTarget.closest(".markdown");
+          let id;
+          try {
+            id = decodeURIComponent(href.slice(1));
+          } catch {
+            id = href.slice(1);
+          }
+          const target = id
+            ? [...(root?.querySelectorAll("[id]") || [])].find(
+                (element) =>
+                  element.id === id || element.id === "user-content-" + id,
+              )
+            : root;
+          if (target) {
+            let parent = target.parentElement;
+            while (parent && parent !== root) {
+              if (parent.tagName === "DETAILS") parent.open = true;
+              parent = parent.parentElement;
+            }
+            target.scrollIntoView({ block: "start" });
+          }
+        } else if (href?.startsWith("/") && !href.startsWith("//")) {
           event.preventDefault();
           set({
             panel: "files",

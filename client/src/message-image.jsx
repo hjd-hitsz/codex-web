@@ -3,7 +3,15 @@ import { rpc, useStore } from "./store";
 import { imageDataUrl, localImagePath } from "./image-source";
 import { ImageViewer } from "./image-viewer";
 
-export function MessageImage({ src, alt = "", title, cwd: baseDirectory }) {
+export function MessageImage({
+  src,
+  alt = "",
+  title,
+  width,
+  height,
+  sources,
+  cwd: baseDirectory,
+}) {
   const { connected, current, cwd, defaultCwd } = useStore();
   const path = localImagePath(
     src,
@@ -13,12 +21,14 @@ export function MessageImage({ src, alt = "", title, cwd: baseDirectory }) {
   const [attempt, setAttempt] = useState(0);
   const [failedUrl, setFailedUrl] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [selected, setSelected] = useState(null);
   const loaded =
     result?.path === path && result.attempt === attempt ? result : null;
   const url = path ? loaded?.url : src;
   const failed = !src || loaded?.error || (url && failedUrl === url);
+  const imageUrl = selected && selected.url === url ? selected.currentSrc : url;
   const expanded = Boolean(
-    preview && preview.src === src && preview.url === url,
+    preview && preview.src === src && preview.url === imageUrl,
   );
 
   useEffect(() => setPreview(null), [src, url]);
@@ -40,6 +50,23 @@ export function MessageImage({ src, alt = "", title, cwd: baseDirectory }) {
     };
   }, [path, connected, attempt]);
 
+  const image = (
+    <img
+      key={attempt}
+      src={url}
+      alt={alt}
+      title={title}
+      width={width}
+      height={height}
+      style={{ width: width ? Number(width) || width : undefined }}
+      loading="lazy"
+      onLoad={(event) =>
+        setSelected({ url, currentSrc: event.currentTarget.currentSrc || url })
+      }
+      onError={() => setFailedUrl(url)}
+    />
+  );
+
   if (url && !failed)
     return (
       <>
@@ -53,20 +80,26 @@ export function MessageImage({ src, alt = "", title, cwd: baseDirectory }) {
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            setPreview({ src, url });
+            setPreview({ src, url: imageUrl });
           }}
         >
-          <img
-            key={attempt}
-            src={url}
-            alt={alt}
-            title={title}
-            loading="lazy"
-            onError={() => setFailedUrl(url)}
-          />
+          {sources ? (
+            <picture>
+              {sources.map((source, index) => (
+                <source key={index} {...source} />
+              ))}
+              {image}
+            </picture>
+          ) : (
+            image
+          )}
         </button>
         {expanded && (
-          <ImageViewer url={url} alt={alt} onClose={() => setPreview(null)} />
+          <ImageViewer
+            url={imageUrl}
+            alt={alt}
+            onClose={() => setPreview(null)}
+          />
         )}
       </>
     );

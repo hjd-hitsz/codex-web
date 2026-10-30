@@ -4,6 +4,9 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSlug from "rehype-slug";
 import "katex/dist/katex.min.css";
 import { Copy } from "lucide-react";
 import { copy } from "./store";
@@ -13,8 +16,26 @@ import { MessageLink } from "./message-link";
 import { messageUrlTransform } from "./image-source";
 import { remarkAnnotations } from "./annotations";
 import { AnnotationReference, AnnotationContext } from "./message-annotations";
+import { MarkdownPicture } from "./markdown-picture";
 
 const DirectoryContext = createContext(undefined);
+
+const htmlSchema = {
+  ...defaultSchema,
+  tagNames: [...defaultSchema.tagNames, "annotation-ref"],
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [["className", /^language-./, "math-inline", "math-display"]],
+    source: ["srcSet", "media", "type", "sizes"],
+    "annotation-ref": ["index"],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: [...defaultSchema.protocols.href, "file", "sandbox"],
+    src: [...defaultSchema.protocols.src, "file", "sandbox", "data"],
+  },
+  strip: [...defaultSchema.strip, "style", "iframe", "object", "embed"],
+};
 
 function MarkdownImage(props) {
   const cwd = useContext(DirectoryContext);
@@ -24,6 +45,11 @@ function MarkdownImage(props) {
 function MarkdownLink(props) {
   const cwd = useContext(DirectoryContext);
   return <MessageLink {...props} cwd={cwd} />;
+}
+
+function Picture(props) {
+  const cwd = useContext(DirectoryContext);
+  return <MarkdownPicture {...props} cwd={cwd} />;
 }
 
 function mathDelimiters(text) {
@@ -53,6 +79,9 @@ export function RichText({ text, annotations = [], cwd }) {
             urlTransform={messageUrlTransform}
             remarkPlugins={[remarkGfm, remarkMath, remarkAnnotations]}
             rehypePlugins={[
+              rehypeRaw,
+              [rehypeSanitize, htmlSchema],
+              [rehypeSlug, { prefix: "user-content-" }],
               rehypeKatex,
               [rehypeHighlight, { plainText: ["mermaid"] }],
             ]}
@@ -60,6 +89,7 @@ export function RichText({ text, annotations = [], cwd }) {
               a: MarkdownLink,
               pre: CodeBlock,
               img: MarkdownImage,
+              picture: Picture,
               "annotation-ref": AnnotationReference,
             }}
           >

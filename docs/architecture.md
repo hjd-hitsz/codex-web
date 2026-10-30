@@ -63,7 +63,11 @@ Node.js 网页桥接服务
 
 `rich-text.jsx` 的 `RichText` 供消息和文件预览共用，使用 React Markdown 渲染 GFM、数学公式与代码高亮，将 `mermaid` 代码块交给 `mermaid-block.jsx`。图表源码稳定 250 毫秒后按需加载 Mermaid，`mermaid-renderer.js` 串行配置主题并绘制 SVG，使用 `securityLevel: strict` 和 `suppressErrorRendering: true`，临时绘制节点在成功或失败后清理。图表跟随网页及系统的深浅主题；源码或主题变化时忽略旧请求的迟到结果。绘制期间和解析失败时保留源码，成功后提供图表与源码切换及源码复制。渲染器和各图表模块随网页打包，通过本站加载。
 
-`workspace.jsx` 的文件面板对 `.md`、`.markdown`、`.mdown`、`.mkd` 默认显示 Markdown 预览，扩展名忽略大小写。源码与预览共用当前编辑文本，切换时保留未保存内容，重新进入编辑器时使用当前文本创建文档；保存、关闭和打开其他文件继续执行原有的保存与放弃确认。`RichText` 通过目录上下文将文件所在目录传给链接和图片组件，以此解析相对资源，消息图片继续使用对话工作目录。Markdown 放行本机文件链接和图片 URI，其他地址沿用 React Markdown 的 URL 过滤规则，HTML 内容按安全的默认规则处理。
+`workspace.jsx` 的文件面板对 `.md`、`.markdown`、`.mdown`、`.mkd` 默认显示 Markdown 预览，扩展名忽略大小写。源码与预览共用当前编辑文本，切换时保留未保存内容，重新进入编辑器时使用当前文本创建文档；保存、关闭和打开其他文件继续执行原有的保存与放弃确认。`RichText` 通过目录上下文将文件所在目录传给链接和图片组件，以此解析相对资源，消息图片继续使用对话工作目录。Markdown 放行本机文件链接和图片 URI，其他地址沿用 React Markdown 的 URL 过滤规则。
+
+所有使用 `RichText` 的消息、工具结果、子代理和文件预览共用 HTML 处理链路：`rehype-raw` 解析混排的 HTML，`rehype-sanitize` 先按白名单过滤标签、属性与 URL，再由标题锚点、KaTeX 和代码高亮插件生成展示节点。白名单保留居中、尺寸、折叠块、`picture` 及批注引用，移除脚本、事件、内联样式和嵌入页面；代码围栏与行内代码保留原文。标题采用 GitHub 风格锚点，文内链接只在所属 Markdown 区域查找目标，并展开目标外层的折叠块。
+
+`markdown-picture.jsx` 将 HTML `picture` 的回退图片交给共用图片组件，将 `source` 的本地候选图通过 `fs/readFile` 转为图片数据 URL，保留媒体条件、尺寸与像素密度描述，由浏览器选择实际显示的候选图。显式深浅主题优先于单独的系统配色条件，跟随系统和其他媒体条件沿用浏览器判断；候选图读取失败时保留回退图片，来源改变后忽略迟到结果，重连时重新读取。本地来源与普通图片使用相同目录和 URL 过滤，点击放大使用浏览器实际选中的图片。
 
 `code-editor.jsx` 负责 CodeMirror 编辑器，`editor-language.js` 按扩展名及 `CMakeLists.txt`、`Dockerfile`、`.env` 等文件名选择语法。原生解析器处理 JavaScript / TypeScript、Python、C / C++、JSON、Markdown、HTML / XML 与 CSS，流式解析器补充 Shell、YAML、TOML、Rust、Go、Java、C#、SQL、CMake、Dockerfile、Lua 和属性配置。未知类型继续提供纯文本编辑。编辑器与 Markdown 代码块共用语法颜色变量，随浅色、深色及系统主题变化。
 
