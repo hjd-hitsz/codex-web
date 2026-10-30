@@ -65,6 +65,7 @@ import "./style.css";
 import { projectGroups, threadTime } from "./thread-order";
 import { VersionDetails } from "./version";
 import { ProjectGroup } from "./project-group";
+import { ResizableSidebar } from "./sidebar-resize";
 import { ContextWorkspace } from "./context-panel";
 import { CommandDialog, commandTitles } from "./command-dialog";
 import { isCompacting } from "./compaction";
@@ -198,7 +199,7 @@ function Sidebar() {
         className={"sidebar-backdrop " + (s.sidebar ? "visible" : "")}
         onClick={() => set({ sidebar: false })}
       />
-      <aside className={"sidebar " + (s.sidebar ? "mobile-open" : "")}>
+      <ResizableSidebar open={s.sidebar}>
         <div className="sidebar-top">
           <button className="brand" onClick={() => newChat()}>
             <img src={codexWebIcon} width={24} height={24} alt="" />
@@ -308,7 +309,7 @@ function Sidebar() {
             <Settings size={17} />
           </button>
         </div>
-      </aside>
+      </ResizableSidebar>
     </>
   );
 }

@@ -716,8 +716,13 @@ export function TerminalPanel() {
   const [connected, connectedSet] = useState(false),
     [sessionName, setSessionName] = useState("zsh");
   useEffect(() => {
+    const typography = () => {
+      const style = getComputedStyle(host.current);
+      const fontSize = parseFloat(style.fontSize);
+      return { fontSize, lineHeight: parseFloat(style.lineHeight) / fontSize };
+    };
     const t = new Terminal({
-      fontSize: 12,
+      ...typography(),
       fontFamily: '"JetBrains Mono",Consolas,monospace',
       cursorBlink: true,
       convertEol: false,
@@ -778,6 +783,10 @@ export function TerminalPanel() {
         }).catch(report);
     });
     observer.current = new ResizeObserver(() => {
+      const { fontSize, lineHeight } = typography();
+      if (t.options.fontSize !== fontSize) t.options.fontSize = fontSize;
+      if (t.options.lineHeight !== lineHeight)
+        t.options.lineHeight = lineHeight;
       f.fit();
       if (pid.current)
         rpc("command/exec/resize", {

@@ -1468,6 +1468,18 @@ assert.deepEqual(
 );
 await act(async () => view.unmount());
 console.log("PASS Enter 保留换行、中文输入确认不发送、Ctrl+Enter 发送一次");
+const originalComputedStyle = globalThis.getComputedStyle;
+const originalResizeObserver = globalThis.ResizeObserver;
+let terminalTypography = { fontSize: "12px", lineHeight: "12px" };
+let resizeTerminal;
+globalThis.getComputedStyle = () => terminalTypography;
+globalThis.ResizeObserver = class {
+  constructor(callback) {
+    resizeTerminal = callback;
+  }
+  observe() {}
+  disconnect() {}
+};
 app.set({ terminalOpen: true });
 await act(async () => {
   view = create(React.createElement(app.TerminalPanel), {
@@ -1481,6 +1493,12 @@ assert.deepEqual(
   { type: "dangerFullAccess" },
 );
 assert.equal(testTerminals.at(-1).options.theme.background, "#ffffff");
+assert.equal(testTerminals.at(-1).options.fontSize, 12);
+assert.equal(testTerminals.at(-1).options.lineHeight, 1);
+terminalTypography = { fontSize: "18px", lineHeight: "27px" };
+await act(async () => resizeTerminal());
+assert.equal(testTerminals.at(-1).options.fontSize, 18);
+assert.equal(testTerminals.at(-1).options.lineHeight, 1.5);
 await act(async () => testTerminals.at(-1).input("\x04"));
 assert.equal(
   Buffer.from(
@@ -1504,8 +1522,10 @@ await act(async () => {
 });
 assert.notEqual(localStorage.getItem("cx-terminal"), first);
 await act(async () => view.unmount());
+globalThis.getComputedStyle = originalComputedStyle;
+globalThis.ResizeObserver = originalResizeObserver;
 console.log(
-  "PASS 白底终端、Ctrl+D 传递、退出自动折叠及清理、重新打开创建新终端",
+  "PASS 终端字号与行高同步、白底终端、Ctrl+D 传递、退出自动折叠及清理、重新打开创建新终端",
 );
 
 const history = Array.from({ length: 65 }, (_, i) => ({

@@ -39,11 +39,15 @@ export function CodeEditor({ path, text, onChange, diff = "", patches }) {
           EditorView.theme({
             "&": {
               height: "100%",
-              fontSize: "12px",
+              fontSize: "var(--code-font-size)",
               backgroundColor: "var(--bg)",
               color: "var(--fg)",
             },
-            ".cm-scroller": { overflow: "auto", fontFamily: "var(--mono)" },
+            ".cm-scroller": {
+              overflow: "auto",
+              fontFamily: "var(--mono)",
+              lineHeight: "var(--code-line-height)",
+            },
             ".cm-gutters": {
               backgroundColor: "var(--subtle)",
               color: "var(--muted)",
@@ -51,7 +55,7 @@ export function CodeEditor({ path, text, onChange, diff = "", patches }) {
             },
             ".cm-activeLine": { backgroundColor: "var(--hover)" },
             ".cm-activeLineGutter": { backgroundColor: "var(--hover)" },
-            ".cm-content": { padding: "12px 0" },
+            ".cm-content": { padding: "0.923077rem 0" },
             ".cm-cursor": { borderLeftColor: "var(--fg)" },
           }),
         ],
