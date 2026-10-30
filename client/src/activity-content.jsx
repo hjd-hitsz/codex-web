@@ -372,6 +372,29 @@ function Section({ title, value, cwd }) {
   );
 }
 
+function searchResultLinks(value) {
+  if (typeof value === "string") {
+    try {
+      return searchResultLinks(JSON.parse(value));
+    } catch {
+      return /^https?:\/\/\S+$/.test(value) ? [{ url: value }] : [];
+    }
+  }
+  if (Array.isArray(value)) return value.flatMap(searchResultLinks);
+  if (!value || typeof value !== "object") return [];
+  const url = value.url || value.uri;
+  if (typeof url === "string" && defaultUrlTransform(url))
+    return [{ url, title: value.title || value.name }];
+  return [
+    "results",
+    "result",
+    "output",
+    "content",
+    "structuredContent",
+    "text",
+  ].flatMap((key) => searchResultLinks(value[key]));
+}
+
 export function ActivityContent({ item, cwd }) {
   if (item.type === "imageView")
     return (
@@ -404,6 +427,9 @@ export function ActivityContent({ item, cwd }) {
     );
   if (item.type === "webSearch") {
     const action = item.action || {};
+    const results = searchResultLinks(
+      item.results || item.result || item.output,
+    );
     return (
       <div className="tool-web-details">
         {["openPage", "open_page"].includes(action.type) ? (
@@ -424,11 +450,20 @@ export function ActivityContent({ item, cwd }) {
         ) : (
           <p>搜索网页</p>
         )}
-        <Section
-          title="搜索结果"
-          value={item.results || item.result || item.output}
-          cwd={cwd}
-        />
+        {results.length > 0 && (
+          <section className="tool-section">
+            <small>搜索结果</small>
+            <ul className="tool-values">
+              {results.map((result, index) => (
+                <li key={index}>
+                  <ResourceLink href={result.url} cwd={cwd}>
+                    {result.title || result.url}
+                  </ResourceLink>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <Section title="错误" value={item.error} cwd={cwd} />
       </div>
     );

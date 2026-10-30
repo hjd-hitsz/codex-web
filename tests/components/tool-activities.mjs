@@ -81,6 +81,68 @@ export async function testToolActivities(app, requests, setResponse, emit) {
         .length > 0,
       true,
     );
+    // 搜索结果的不同载荷共用链接列表，摘要及内部字段保持隐藏。
+    const results = source[0].results;
+    for (const [field, value] of [
+      ["results", results],
+      ["result", JSON.stringify({ results, count: 2 })],
+      [
+        "output",
+        { content: [{ type: "text", text: JSON.stringify({ results }) }] },
+      ],
+      [
+        "results",
+        [
+          { uri: results[0].url, name: results[0].title },
+          results[1].url,
+          { url: "javascript:alert(1)", title: "无效链接" },
+          { title: "缺少链接", ref_id: "internal-only" },
+        ],
+      ],
+    ]) {
+      await act(async () =>
+        app.set({
+          items: [
+            { ...source[0], results: undefined, [field]: value },
+            ...source.slice(1),
+          ],
+        }),
+      );
+      const search = activities()[0];
+      assert.deepEqual(
+        search.findAllByType("a").map((node) => node.props.href),
+        results.map((result) => result.url),
+      );
+      assert.equal(search.findAllByType("dl").length, 0);
+      assert(
+        !/搜索结果摘要|搜索结果说明|text_result|domain|ref id|fixture-search|无效链接|缺少链接|internal-only/.test(
+          search
+            .findAll((node) => typeof node.type === "string")
+            .flatMap((node) =>
+              node.children.filter((child) => typeof child === "string"),
+            )
+            .join(" "),
+        ),
+      );
+    }
+    await act(async () =>
+      emit("item/completed", {
+        threadId: "tool-fixture",
+        turnId: "turn",
+        item: {
+          ...source[0],
+          results: [
+            ...results,
+            { url: "https://example.com/live", title: "实时结果" },
+          ],
+          error: "部分搜索失败，请重试。",
+        },
+      }),
+    );
+    assert.equal(activities()[0].findAllByType("a").length, 3);
+    assert(text().includes("实时结果"));
+    assert(text().includes("部分搜索失败，请重试。"));
+    await act(async () => app.set({ items: source }));
     // 新图片在完成事件到达时自动显示；用户主动折叠后保留折叠状态。
     await act(async () =>
       emit("item/started", {

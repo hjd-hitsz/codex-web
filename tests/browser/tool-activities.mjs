@@ -230,12 +230,20 @@ try {
       });
     await new Promise((resolve) => setTimeout(resolve, 60));
   };
-  const screenshot = async (name) => {
+  const screenshot = async (name, selector) => {
     await page("Input.dispatchMouseEvent", { type: "mouseMoved", x: 0, y: 0 });
     await evaluate(
       "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
     );
-    const { data } = await page("Page.captureScreenshot", { format: "png" });
+    const clip = selector
+      ? await evaluate(
+          `(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,scale:1}})()`,
+        )
+      : undefined;
+    const { data } = await page("Page.captureScreenshot", {
+      format: "png",
+      ...(clip ? { clip } : {}),
+    });
     await writeFile(join(output, name + ".png"), Buffer.from(data, "base64"));
   };
   await page("Emulation.setDeviceMetricsOverride", {
@@ -262,12 +270,13 @@ try {
   if (before) {
     assert(
       await evaluate(
-        "[...document.querySelectorAll('.activity-body pre')].some(e=>e.textContent.includes('findInPage'))",
+        "document.querySelector('.tool-web-details').textContent.includes('fixture-search-0')",
       ),
     );
-    assert.equal(
-      await evaluate("document.querySelectorAll('.activity img').length"),
-      0,
+    assert(
+      await evaluate(
+        "document.querySelector('.tool-web-details').textContent.includes('搜索结果摘要')",
+      ),
     );
   } else {
     await waitFor("document.querySelector('.activity img')?.naturalWidth > 0");
@@ -280,11 +289,39 @@ try {
         "document.querySelector('.process-content').textContent.includes('在网页中查找')",
       ),
     );
+    assert.deepEqual(
+      await evaluate(
+        "[...document.querySelectorAll('.tool-web-details .tool-section a')].map(e=>({text:e.textContent,href:e.getAttribute('href')}))",
+      ),
+      [
+        { text: "Planning Algorithms", href: "https://lavalle.pl/planning/" },
+        {
+          text: "https://arxiv.org/abs/1105.1186",
+          href: "https://arxiv.org/abs/1105.1186",
+        },
+      ],
+    );
+    assert(
+      await evaluate(
+        "[...document.querySelectorAll('.tool-web-details .tool-section li')].every(e=>e.children.length===1 && e.firstElementChild.tagName==='A') && !/搜索结果摘要|搜索结果说明|text_result|domain|ref id|fixture-search/.test(document.querySelector('.tool-web-details').textContent)",
+      ),
+    );
+    await click(".activity:first-child > button");
+    assert(
+      await evaluate(
+        "!document.querySelector('.activity:first-child .tool-web-details')",
+      ),
+    );
+    await click(".activity:first-child > button");
+    await waitFor(
+      "document.querySelectorAll('.tool-web-details .tool-section a').length===2",
+    );
   }
   await evaluate(
     "document.querySelector('.conversation').scrollTo({top:0,behavior:'instant'})",
   );
   await screenshot("desktop-light");
+  await screenshot("search-results", ".activity:first-child");
   if (!before) {
     await click(".activity .message-image-button");
     await waitFor("document.querySelector('dialog[open]')");

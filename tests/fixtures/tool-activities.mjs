@@ -15,6 +15,23 @@ export const toolActivities = [
         "Karaman Frazzoli optimal motion planning",
       ],
     },
+    results: [
+      {
+        title: "Planning Algorithms",
+        url: "https://lavalle.pl/planning/",
+        snippet: "搜索结果摘要：采样规划与路径搜索。",
+        type: "text_result",
+        domain: "lavalle.pl",
+        ref_id: "fixture-search-0",
+      },
+      {
+        url: "https://arxiv.org/abs/1105.1186",
+        description: "搜索结果说明：渐近最优规划。",
+        type: "text_result",
+        domain: "arxiv.org",
+        ref_id: "fixture-search-1",
+      },
+    ],
   },
   {
     id: "open",
