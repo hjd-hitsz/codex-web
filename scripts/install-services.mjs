@@ -66,14 +66,38 @@ WantedBy=default.target
     );
 
   const webPath = join(userUnits, "codex-lan-web.service");
+  const tasksPath = join(userUnits, "codex-web-tasks.service");
+  if (await exists(tasksPath))
+    await copyFile(tasksPath, join(backups, "codex-web-tasks.service"));
+  await writeFile(
+    tasksPath,
+    `[Unit]
+Description=Codex Web background tasks
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${unitPath(configDir)}
+Environment=${quote("PATH=" + dirname(process.execPath) + ":" + process.env.PATH)}
+EnvironmentFile=-${unitPath(join(configDir, ".env"))}
+ExecStart=${quote(process.execPath)} ${quote(join(root, "server/src/background-daemon.mjs"))} ${quote(config.backgroundDir)} ${quote(config.upstreamUrl)}
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+UMask=0077
+
+[Install]
+WantedBy=default.target
+`,
+  );
   if (await exists(webPath))
     await copyFile(webPath, join(backups, "codex-lan-web.service"));
   await writeFile(
     webPath,
     `[Unit]
 Description=Codex Web
-Wants=codex-app-server.service
-After=network.target codex-app-server.service
+Wants=codex-app-server.service codex-web-tasks.service
+After=network.target codex-app-server.service codex-web-tasks.service
 
 [Service]
 Type=simple
@@ -88,9 +112,13 @@ UMask=0077
 WantedBy=default.target
 `,
   );
-  execFileSync("systemd-analyze", ["--user", "verify", webPath, backendPath], {
-    stdio: "inherit",
-  });
+  execFileSync(
+    "systemd-analyze",
+    ["--user", "verify", webPath, backendPath, tasksPath],
+    {
+      stdio: "inherit",
+    },
+  );
   execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "inherit" });
   execFileSync(
     "systemctl",
@@ -100,6 +128,7 @@ WantedBy=default.target
       "--now",
       "codex-app-server.service",
       "codex-lan-web.service",
+      "codex-web-tasks.service",
     ],
     { stdio: "inherit" },
   );

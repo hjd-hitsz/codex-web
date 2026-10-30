@@ -22,6 +22,7 @@ import { testContextPanel } from "./context-panel.mjs";
 import { testCommands } from "./commands.mjs";
 import { testCompaction } from "./compaction.mjs";
 import { testCompactionRecovery } from "./compaction-recovery.mjs";
+import { testBackgroundJobs } from "./background-jobs.mjs";
 import {
   PROJECTLESS_SOURCE,
   projectGroups,
@@ -107,6 +108,12 @@ await testMermaid(app);
     await testHistoryTranslations(app);
     await testMessageNavigation(app);
     await testContextPanel(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
+    await testBackgroundJobs(
       app,
       requests,
       (respond) => (responseFor = respond),

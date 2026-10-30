@@ -6,6 +6,9 @@ import { gzipSync } from "node:zlib";
 import WebSocket, { WebSocketServer } from "ws";
 import { readConfig } from "./config.mjs";
 import { readVersion } from "./version.mjs";
+import { backgroundConfig } from "./background-client.mjs";
+import { createBackgroundWake } from "./background-wake.mjs";
+import { setTimeout as delay } from "node:timers/promises";
 import { createCompactions } from "./compaction.mjs";
 import { findCompactionTurn, recoverCompaction } from "./compaction-state.mjs";
 import { MAX_RPC_MESSAGE_BYTES, sendRpcText } from "./rpc-transport.mjs";
@@ -52,6 +55,21 @@ const loadedThreadMethods = new Set([
   "thread/backgroundTerminals/list",
   "thread/backgroundTerminals/clean",
 ]);
+const completedTurns = new Set();
+const background = createBackgroundWake({
+  directory: config.backgroundDir,
+  call: callUpstream,
+  resume: resumeForWrite,
+  ready: () => ready,
+  busy: (id) =>
+    compactions.busy(id) ||
+    activeTurns.has(id) ||
+    activeThreads.has(id) ||
+    undoing.has(id) ||
+    [...pending.values()].some((request) => request.threadId === id),
+  changed: (params) => broadcast({ method: "lan/backgroundJobs", params }),
+  released: releaseUnusedThreads,
+});
 let upstream;
 let ready = false;
 let sequence = 1;
@@ -80,15 +98,31 @@ function callUpstream(method, params) {
   });
 }
 async function resumeForWrite(threadId) {
+  if (releasing.has(threadId)) await releasing.get(threadId);
   if (subscriptions.has(threadId)) return;
   if (!resuming.has(threadId)) {
-    const resume = callUpstream("thread/resume", {
-      threadId,
-      excludeTurns: true,
-      approvalPolicy: "never",
-      sandbox: "danger-full-access",
-      config: { thread_unload_delay_secs: 0 },
-    })
+    const resume = (async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await callUpstream("thread/resume", {
+            threadId,
+            excludeTurns: true,
+            approvalPolicy: "never",
+            sandbox: "danger-full-access",
+            config: backgroundConfig(config),
+          });
+        } catch (error) {
+          if (
+            attempt >= 49 ||
+            !error.message.includes(
+              "is closing; retry thread/resume after the thread is closed",
+            )
+          )
+            throw error;
+          await delay(100);
+        }
+      }
+    })()
       .then(({ thread }) => {
         if (!subscriptions.has(thread.id))
           subscriptions.set(thread.id, new Set());
@@ -169,6 +203,7 @@ function releaseUnusedThreads() {
   for (const [threadId, owners] of subscriptions) {
     if (
       !ready ||
+      background.busy(threadId) ||
       compactions.busy(threadId) ||
       (unwrittenThreads.has(threadId) && owners.size) ||
       activeTurns.has(threadId) ||
@@ -217,6 +252,8 @@ function state() {
       activeTurns: Object.fromEntries(activeTurns),
       compactions: Object.fromEntries(compactions.entries),
       terminals: Object.fromEntries(terminals),
+      backgroundJobs: background.snapshot().jobs,
+      backgroundError: background.snapshot().error,
       undoneFiles: [...undoneFiles.values()],
     },
   };
@@ -267,6 +304,13 @@ function connect() {
         activeThreads.add(p.threadId);
         unwrittenThreads.delete(p.threadId);
       }
+      if (message.method === "turn/completed") {
+        completedTurns.add(p.turn.id);
+        if (completedTurns.size > 1000)
+          completedTurns.delete(completedTurns.values().next().value);
+      }
+      if (["thread/archived", "thread/deleted"].includes(message.method))
+        background.suppress(p.threadId, message.method === "thread/deleted");
       if (
         message.method === "turn/completed" &&
         (!activeTurns.has(p.threadId) ||
@@ -319,8 +363,23 @@ function connect() {
       if (message.error && request.method === "thread/compact/start")
         compactions.reject(request.threadId, message.id, message.error.message);
       if (request.resolve) {
-        if (message.error) request.reject(new Error(message.error.message));
-        else request.resolve(message.result);
+        if (message.error)
+          request.reject(
+            Object.assign(new Error(message.error.message), {
+              rpcRejected: true,
+            }),
+          );
+        else {
+          if (
+            request.method === "turn/start" &&
+            message.result?.turn?.status === "inProgress" &&
+            !completedTurns.has(message.result.turn.id)
+          ) {
+            activeTurns.set(request.threadId, message.result.turn.id);
+            activeThreads.add(request.threadId);
+          }
+          request.resolve(message.result);
+        }
         releaseUnusedThreads();
         return;
       }
@@ -522,6 +581,37 @@ clients.on("connection", (client) => {
       return;
     }
     const threadId = message.params?.threadId;
+    if (message.method?.startsWith("lan/background/")) {
+      try {
+        const action = message.method.slice("lan/background/".length);
+        if (action === "list") await background.poll();
+        send(client, {
+          id: message.id,
+          result:
+            action === "list"
+              ? background.snapshot()
+              : await background.action(action, message.params),
+        });
+        if (action !== "list") background.poll();
+      } catch (error) {
+        send(client, {
+          id: message.id,
+          error: { code: -32000, message: error.message },
+        });
+      }
+      return;
+    }
+    if (
+      [
+        "turn/start",
+        "turn/steer",
+        "thread/compact/start",
+        "review/start",
+        "thread/archive",
+        "thread/delete",
+      ].includes(message.method)
+    )
+      await background.wait(threadId);
     if (threadId && releasing.has(threadId)) await releasing.get(threadId);
     if (!ready) {
       send(client, {
@@ -673,7 +763,7 @@ clients.on("connection", (client) => {
       if (threadMethods.has(message.method))
         message.params = {
           ...message.params,
-          config: { ...message.params?.config, thread_unload_delay_secs: 0 },
+          config: backgroundConfig(config, message.params?.config),
         };
       const id = sequence++;
       const forwarded = JSON.stringify({ ...message, id });
@@ -766,6 +856,8 @@ const heartbeat = setInterval(() => {
   releaseUnusedThreads();
 }, 30000);
 heartbeat.unref();
+const backgroundPoll = setInterval(() => background.poll(), 1000);
+backgroundPoll.unref();
 connect();
 server.listen(config.port, config.host, () =>
   console.log(

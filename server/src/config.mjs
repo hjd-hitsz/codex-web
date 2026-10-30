@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 
 export function readConfig(env = process.env) {
   const port = Number(env.PORT || 8766);
@@ -15,6 +16,12 @@ export function readConfig(env = process.env) {
     port,
     upstreamUrl,
     codexHome,
+    backgroundDir: join(
+      codexHome,
+      "codex-web",
+      "background",
+      createHash("sha256").update(upstreamUrl).digest("hex").slice(0, 16),
+    ),
     projectlessRoot: join(codexHome, "codex-web", "workspaces"),
     defaultCwd: resolve(env.DEFAULT_CWD || homedir()),
     staticDir: env.STATIC_DIR

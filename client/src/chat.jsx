@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import codexWebIcon from "./assets/codex-web.svg";
+import { BackgroundCompletion, BackgroundStatus } from "./background-jobs";
 import {
   ArrowUp,
   ArrowDown,
@@ -154,10 +155,23 @@ function Activity({ item, cwd }) {
           ? Globe
           : Sparkles;
   let label = toolLabels[item.type] || item.type;
+  if (
+    item.type === "functionCallOutput" &&
+    item.name === "background_completed"
+  )
+    label = "后台任务完成";
   if (item.type === "commandExecution")
     label = commandDescription(item.command);
   if (item.type === "mcpToolCall")
     label = [item.server, item.tool].filter(Boolean).join(" / ");
+  if (item.type === "mcpToolCall" && item.server === "codex_web_background")
+    label =
+      {
+        background_start: "启动后台任务",
+        background_read: "读取后台日志",
+        background_list: "查看后台任务",
+        background_cancel: "停止后台任务",
+      }[item.tool] || "后台任务";
   if (item.type === "webSearch")
     label = item.query || item.action?.query || label;
   return (
@@ -219,6 +233,9 @@ function Activity({ item, cwd }) {
             ))
           ) : item.type === "plan" ? (
             <RichText text={item.text || ""} cwd={cwd} />
+          ) : item.type === "functionCallOutput" &&
+            item.name === "background_completed" ? (
+            <BackgroundCompletion output={item.output} />
           ) : (
             <pre>
               {JSON.stringify(
@@ -949,6 +966,7 @@ export function Composer() {
   const checking = s.loading || access?.status === "checking";
   return (
     <div className="composer-wrap">
+      <BackgroundStatus />
       {compaction && (
         <CompactionStatus
           key={s.current?.id + compaction.id}

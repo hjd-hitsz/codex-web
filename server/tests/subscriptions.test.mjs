@@ -188,9 +188,14 @@ for (const method of ["thread/start", "thread/resume", "thread/fork"]) {
         threadId: "source",
         config: { model: "fixture-model", thread_unload_delay_secs: 1800 },
       });
-      assert.deepEqual(
-        app.requests.find((request) => request.method === method).params.config,
-        { model: "fixture-model", thread_unload_delay_secs: 0 },
+      const forwarded = app.requests.find(
+        (request) => request.method === method,
+      ).params.config;
+      assert.equal(forwarded.model, "fixture-model");
+      assert.equal(forwarded.thread_unload_delay_secs, 0);
+      assert.equal(
+        forwarded.mcp_servers.codex_web_background.command,
+        process.execPath,
       );
       if (method === "thread/start") {
         assert.equal(app.unsubscribed().length, 0);
@@ -576,6 +581,30 @@ test(
     await waitFor(() => app.unsubscribed().length);
   },
 );
+
+test("取消订阅确认后仍在关闭的对话会短暂重试恢复，再提交一次轮次", async (t) => {
+  let attempts = 0;
+  const app = await bridge(t, (request, upstream) => {
+    if (request.method !== "thread/resume" || ++attempts > 2) return false;
+    upstream.send(
+      JSON.stringify({
+        id: request.id,
+        error: {
+          code: -32000,
+          message: `thread ${request.params.threadId} is closing; retry thread/resume after the thread is closed`,
+        },
+      }),
+    );
+    return true;
+  });
+  const client = await app.connect();
+  await app.rpc(client, "turn/start", { threadId: "closing-fixture" });
+  assert.equal(attempts, 3);
+  assert.equal(
+    app.requests.filter((request) => request.method === "turn/start").length,
+    1,
+  );
+});
 
 test(
   "并发写入同一空闲对话共用恢复请求，恢复期间保留写入权",

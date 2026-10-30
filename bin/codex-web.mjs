@@ -29,7 +29,7 @@ async function main() {
   backend                    前台启动 Codex app-server
   config init                创建用户配置，保留已有配置
   service install            安装并启动 Linux systemd 用户服务
-  service status             查看网页与后端服务状态
+  service status             查看网页、任务与后端服务状态
   service start              启动网页服务及其 Codex 后端
   service stop               停止网页服务
   service restart            重启网页服务
@@ -112,7 +112,11 @@ async function main() {
       const action = args[1];
       const units = ["codex-lan-web.service"];
       if (action === "status")
-        units.push("codex-app-server.service", "--no-pager");
+        units.push(
+          "codex-app-server.service",
+          "codex-web-tasks.service",
+          "--no-pager",
+        );
       execFileSync("systemctl", ["--user", action, ...units], {
         stdio: "inherit",
       });

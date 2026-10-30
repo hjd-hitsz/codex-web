@@ -22,7 +22,7 @@ codex-web service install
 codex-web service status
 ```
 
-npm 全局命令所在目录需在 `PATH` 中。服务安装会启动网页服务和缺失的 Codex 后端服务，保留已有后端配置。
+npm 全局命令所在目录需在 `PATH` 中。服务安装会启动网页服务、后台任务服务和缺失的 Codex 后端服务，保留已有后端配置。
 
 需要开机自动启动、退出登录后继续运行时，执行：
 
@@ -77,6 +77,8 @@ codex-web service restart-when-idle
 聊天记录和登录凭据由服务所在电脑的 Codex 管理；草稿、置顶、项目快捷列表和主题保存在当前浏览器中。“未分类”对话生成的文件保存在 Codex 配置目录下的 `codex-web/workspaces`，迁移电脑时应一并保留。
 
 思考摘要会发送至 `transmart.qq.com` 翻译，发送前替换其中的代码、路径和链接。自动对话标题使用 Codex 模型，会产生少量额外模型用量。
+
+模型可将构建、测试等长命令交给后台任务服务，结束当前轮次后等待任务完成，再自动继续原对话。任务记录和日志保存在 Codex 配置目录下的 `codex-web/background`；自动继续会产生正常的模型用量。后台执行与恢复条件见[部署与维护](docs/deployment.md#后台任务)。
 
 - 网页无法打开：运行 `codex-web service status`，检查服务状态、访问 IP、端口和防火墙。
 - 网页提示后端未连接：检查 Codex 登录和后端服务状态。可用 `curl http://127.0.0.1:8766/healthz` 检查连接，HTTP 200 表示已就绪，503 表示后端未连接；自定义端口时相应替换。

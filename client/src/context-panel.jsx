@@ -10,6 +10,7 @@ import {
   RefreshCw,
   TerminalSquare,
   Users,
+  Timer,
   X,
 } from "lucide-react";
 import { onEvent, openSubAgent, rpc, set, useStore } from "./store";
@@ -22,6 +23,7 @@ import {
 import { ReadOnlyConversation } from "./chat";
 import { ChangesPanel, FilePanel, IconButton } from "./workspace";
 import { reasoningEffortLabels } from "./reasoning-effort";
+import { BackgroundJobsPanel } from "./background-jobs";
 
 export function ContextCard() {
   const s = useStore();
@@ -49,6 +51,16 @@ export function ContextCard() {
           <TerminalSquare size={17} />
           <span>终端</span>
           <small>{s.terminalOpen ? "已打开" : "打开"}</small>
+        </button>
+        <button onClick={() => set({ panel: "background", contextOpen: true })}>
+          <Timer size={17} />
+          <span>后台任务</span>
+          <small>
+            {(s.backgroundJobs || []).filter(
+              (job) =>
+                job.threadId === s.current?.id && job.status === "running",
+            ).length || "查看"}
+          </small>
         </button>
       </nav>
       {agents.length > 0 && (
@@ -324,6 +336,9 @@ export function ContextWorkspace() {
             key={s.current.id + ":" + agent.id}
             agent={agent}
           />
+        )}
+        {s.panel === "background" && detailsOpen && (
+          <BackgroundJobsPanel key={s.current?.id} />
         )}
       </aside>
       <nav

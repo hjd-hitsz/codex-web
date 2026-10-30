@@ -36,6 +36,10 @@ test(
       "client/dist/apple-touch-icon.png",
       "build-info.json",
       "server/src/version.mjs",
+      "server/src/background-mcp.mjs",
+      "server/src/background-daemon.mjs",
+      "server/src/background-jobs.mjs",
+      "server/src/background-wake.mjs",
       "CHANGELOG.md",
       ".env.example",
     ])
@@ -213,6 +217,22 @@ test(
     );
     assert.ok(web.includes(`CODEX_WEB_CONFIG_DIR=${configDir}`));
     assert.match(web, /Wants=codex-app-server.service/);
+    assert.match(web, /Wants=.*codex-web-tasks.service/);
+    const tasks = await readFile(
+      join(units, "codex-web-tasks.service"),
+      "utf8",
+    );
+    assert.ok(
+      tasks.includes(
+        join(
+          prefix,
+          "lib/node_modules/codex-web/server/src/background-daemon.mjs",
+        ),
+      ),
+    );
+    assert.match(tasks, /UMask=0077/);
+    assert.match(tasks, /Restart=on-failure/);
+    assert.ok(!tasks.includes("PartOf="), "任务进程应独立于网页服务的生命周期");
     const backendPath = join(units, "codex-app-server.service");
     const backend = await readFile(backendPath, "utf8");
     assert.ok(backend.includes(`ws://127.0.0.1:${upstream.address().port}`));
@@ -231,7 +251,11 @@ test(
     assert.match(log, /-c thread_unload_delay_secs=0 app-server --listen/);
     assert.match(
       log,
-      /--user enable --now codex-app-server.service codex-lan-web.service/,
+      /--user enable --now codex-app-server.service codex-lan-web.service codex-web-tasks.service/,
+    );
+    assert.match(
+      log,
+      /--user status codex-lan-web.service codex-app-server.service codex-web-tasks.service/,
     );
     assert.ok(!log.includes(" restart "));
 

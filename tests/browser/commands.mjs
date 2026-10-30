@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { testCompactionReload } from "./compaction-reload.mjs";
+import { testBackgroundJobs } from "./background-jobs.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output =
@@ -52,6 +53,10 @@ function fixture() {
     ];
   let fail = false,
     socket;
+  let backgroundJobs = JSON.parse(
+      sessionStorage.getItem("background-fixture") || "[]",
+    ),
+    backgroundFail = false;
   let compaction = JSON.parse(
       sessionStorage.getItem("compact-fixture") || "null",
     ),
@@ -78,6 +83,17 @@ function fixture() {
   window.commandFixture = {
     requests,
     files,
+    backgroundJobs() {
+      return backgroundJobs;
+    },
+    backgroundSet(jobs) {
+      backgroundJobs = jobs;
+      sessionStorage.setItem("background-fixture", JSON.stringify(jobs));
+      socket.emit("lan/backgroundJobs", { jobs, error: "" });
+    },
+    backgroundFail(value) {
+      backgroundFail = value;
+    },
     setFail(value) {
       fail = value;
     },
@@ -174,6 +190,8 @@ function fixture() {
               compactions: compaction ? { [thread.id]: compaction } : {},
             }),
             questions: [],
+            backgroundJobs,
+            backgroundError: "",
           }),
         0,
       );
@@ -260,6 +278,42 @@ function fixture() {
         };
       if (method === "skills/list") result = { data: [] };
       if (method === "lan/projectless/read") result = { directories: {} };
+      if (method === "lan/background/list")
+        result = { jobs: backgroundJobs, error: "" };
+      if (method === "lan/background/read") {
+        if (backgroundFail) error = { message: "测试日志读取失败" };
+        else
+          result = {
+            job: backgroundJobs.find((entry) => entry.id === params.id),
+            output: params.offset
+              ? "[日志续页] 测试全部通过。"
+              : "[后台构建] 开始编译…\n✓ 124 个模块已处理\n[测试] 12 项通过，0 项失败",
+            offset: params.offset || 0,
+            nextOffset: params.offset ? 65536 : 32768,
+            bytes: 65536,
+          };
+      }
+      if (
+        method === "lan/background/cancel" ||
+        method === "lan/background/retry"
+      ) {
+        window.commandFixture.backgroundSet(
+          backgroundJobs.map((entry) =>
+            entry.id === params.id
+              ? {
+                  ...entry,
+                  status:
+                    method.endsWith("cancel") && entry.status === "running"
+                      ? "cancelled"
+                      : entry.status,
+                  delivery: method.endsWith("cancel")
+                    ? "suppressed"
+                    : "accepted",
+                }
+              : entry,
+          ),
+        );
+      }
       if (method === "fs/readDirectory")
         result = {
           entries: [...files.keys()]
@@ -953,11 +1007,22 @@ try {
   await evaluate('document.documentElement.dataset.theme="dark"');
   await pause(350);
   await screenshot("compact-background-recovered-dark-390");
+  const backgroundProof = await testBackgroundJobs({
+    page,
+    evaluate,
+    waitFor,
+    pause,
+    click,
+    clickText,
+    type,
+    screenshot,
+  });
   const proof = {
     build: JSON.parse(await readFile(join(root, "build-info.json"), "utf8")),
     data: "隔离 WebSocket 模拟后端",
     layouts,
     reloadProof,
+    backgroundProof,
     requests: await evaluate("commandFixture.requests.map(r=>r.method)"),
   };
   await writeFile(join(output, "results.json"), JSON.stringify(proof, null, 2));

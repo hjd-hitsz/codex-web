@@ -78,6 +78,8 @@ npm run check
 
 测试采用模拟后端，不消耗模型额度，也不修改真实聊天。协议或生命周期变更应补充对应回归测试；真实后端验证使用临时会话或明确的测试数据。各测试目录的覆盖范围见[架构说明中的测试章节](architecture.md#测试)。
 
+后台任务另有两项联调：`npm run test:background:codex` 使用本机 Codex CLI、临时 `CODEX_HOME` 及本机 Responses 模拟服务，验证旧对话接入 MCP、结束轮次、卸载、关闭页面后自动续跑；模型请求始终在本机处理。`CHROME_PATH=/path/to/chromium npm run test:background:browser` 使用生产构建和隔离 WebSocket 数据，覆盖后台任务状态、日志分页与失败重试、完整刷新、停止和续跑重试、草稿保留及桌面与窄屏的深浅主题，并同时运行现有命令与整理上下文回归。先执行 `npm run build`；截图和构建来源默认保存在 `.cache/commands-browser`，可通过 `BROWSER_OUTPUT_DIR` 指定目录。
+
 批注浏览器回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/annotations.mjs`。脚本复制当前生产资源，在独立浏览器配置目录中使用模拟 WebSocket 历史，验证多批注草稿、悬浮编辑、缩放、窄屏、刷新恢复、失败重试及正文统一提交；截图和构建来源记录默认写入 `.cache/annotations-browser`，可通过 `BROWSER_OUTPUT_DIR` 指定目录。
 
 视觉调整的浏览器检查使用生产构建与隔离的模拟历史，覆盖正文、代码块、工作过程、输入框草稿、右侧详情、设置弹窗及欢迎页。浅色、深色、跟随系统深色和窄屏分别核对文字对比度、选中状态、换行、控件位置及全宽布局。80%、100%、125%、150% 和 200% 缩放按物理窗口尺寸除以缩放倍数设置 CSS 视口，并同步设置设备像素比，检查发送按钮和底栏的可见性。修改前后采用相同数据和视口截图，图片及构建信息保存在 `.cache` 中。
@@ -100,7 +102,7 @@ npm run service:install
 npm run service:status
 ```
 
-安装脚本创建用户级 `codex-lan-web.service`，直接运行当前项目中的桥接服务。已有 `codex-app-server.service` 保留代理、环境和启动设置；缺失时创建后端服务。被覆盖的网页服务配置备份到用户状态目录下的 `codex-web/service-backups`。
+安装脚本创建用户级 `codex-lan-web.service` 和独立的 `codex-web-tasks.service`，分别运行当前项目中的桥接服务和后台命令。已有 `codex-app-server.service` 保留代理、环境和启动设置；缺失时创建后端服务。被覆盖的网页与任务服务配置备份到用户状态目录下的 `codex-web/service-backups`。任务服务中的执行目录和脚本路径在安装时固定；修改后台任务代码或迁移源码目录后，等待后台命令结束，再重启任务服务。
 
 仅修改前端时重新构建并刷新网页。修改桥接后，通过以下命令等待任务与上下文整理结束再重启：
 

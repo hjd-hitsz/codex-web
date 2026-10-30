@@ -93,6 +93,8 @@ let state = {
   contextOpen: false,
   terminalOpen: false,
   terminals: {},
+  backgroundJobs: [],
+  backgroundError: "",
   sidebar: false,
   modal: null,
 };
@@ -195,7 +197,10 @@ let listing = 0;
 export const listThreads = (params) => threadOrdering.list(params);
 export function rpc(method, params = {}, timeout = 120000) {
   return new Promise((resolve, reject) => {
-    if (!state.connected || socket?.readyState !== WebSocket.OPEN)
+    if (
+      (!state.connected && !method.startsWith("lan/background/")) ||
+      socket?.readyState !== WebSocket.OPEN
+    )
       return reject(new Error("与电脑的连接尚未就绪，正在自动重连。"));
     const id = seq++;
     const message = JSON.stringify({
@@ -281,6 +286,8 @@ function connect() {
         compactions: { ...state.compactions, ...m.params.compactions },
         questions: m.params.questions,
         terminals: m.params.terminals || {},
+        backgroundJobs: m.params.backgroundJobs || [],
+        backgroundError: m.params.backgroundError || "",
       });
       const terminalId = localStorage.getItem("cx-terminal");
       if (m.params.terminals?.[terminalId]?.running === false)
@@ -690,6 +697,10 @@ function recordTurnTimings(threadId, turns) {
   set({ turnTimings: { ...state.turnTimings, [threadId]: timings } });
 }
 function handle({ method, params: p = {} }) {
+  if (method === "lan/backgroundJobs") {
+    set({ backgroundJobs: p.jobs, backgroundError: p.error || "" });
+    return;
+  }
   if (method === "lan/compaction") {
     if (!deletedThreads.has(p.threadId))
       set({
