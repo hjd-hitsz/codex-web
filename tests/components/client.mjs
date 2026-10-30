@@ -16,6 +16,7 @@ import { testFileChanges } from "./file-changes.mjs";
 import { testProcessTiming } from "./process-timing.mjs";
 import { testQuestions } from "./questions.mjs";
 import { testConnectionLifecycle } from "./connection-lifecycle.mjs";
+import { testAccountUsage } from "./account-usage.mjs";
 import { testHistory } from "./history.mjs";
 import { testHistoryTranslations } from "./history-translations.mjs";
 import { testConversationScroll } from "./conversation-scroll.mjs";
@@ -80,6 +81,12 @@ await testMermaid(app);
 {
   const previousResponse = responseFor;
   try {
+    await testAccountUsage(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
     await testCommands(
       app,
       requests,

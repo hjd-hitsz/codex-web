@@ -82,6 +82,8 @@ npm run check
 
 视觉调整的浏览器检查使用生产构建与隔离的模拟历史，覆盖正文、代码块、工作过程、输入框草稿、右侧详情、设置弹窗及欢迎页。浅色、深色、跟随系统深色和窄屏分别核对文字对比度、选中状态、换行、控件位置及全宽布局。80%、100%、125%、150% 和 200% 缩放按物理窗口尺寸除以缩放倍数设置 CSS 视口，并同步设置设备像素比，检查发送按钮和底栏的可见性。修改前后采用相同数据和视口截图，图片及构建信息保存在 `.cache` 中。
 
+账户额度浏览器回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/account-usage.mjs`。脚本注入隔离的 Pro 和 Plus 账户，核对默认圆环、账户行高度和单行重置信息，通过实际点击、Enter、空格、Esc 与外部点击验证详情收放；推进本地时钟并触发 30 秒倒计时回调，确认时间更新及后端请求数量。额度自动读取测试把 60 秒轮询缩短至 200 毫秒并按需启用，组件测试另行断言两个生产间隔。继续验证额度通知、接口失败、回到前台与设置页精简，覆盖浅色、深色、跟随系统深色、五档缩放、390px 窄屏和基础字号放大。截图及构建来源写入 `.cache/account-usage-compact-browser/after`。修改前先将旧 `client/dist` 与 `build-info.json` 复制到 `.cache/account-usage-compact-before/`，分别命名为 `dist` 与 `build-info.json`，再以 `BROWSER_BEFORE=1` 运行同一脚本，记录原有展开大卡片的对照结果。
+
 README 的界面截图维护在 `docs/images/`：`desktop-light.png` 与 `desktop-dark.png` 使用相同演示数据和 1440 × 900 的桌面视口，`mobile.png` 使用 390 × 844 的手机视口及 2 倍设备像素比。更新截图前重新构建，在独立浏览器配置中使用隔离演示项目和模拟消息，实际打开文件预览、切换主题与布局；核对正文、变更汇总和输入框可见，并将构建来源与检查记录留在 `.cache`。README 通过 `picture` 随阅读环境切换桌面截图，手机截图放在可展开区域；更新后实际渲染 Markdown，检查图片、相对链接、折叠区域及窄屏排版。
 
 Markdown HTML 回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/markdown-html.mjs`。脚本使用当前 README、仓库内图片和隔离演示消息，通过程序实际消息区与文件面板验证 HTML 排版、折叠块、图标尺寸、本地候选图、深浅主题与系统主题、文内导航、大图预览及焦点恢复；另核对脚本过滤和窄屏布局。截图与构建来源写入 `.cache/markdown-html-browser/after`。修改前将旧 `client/dist` 和 `build-info.json` 复制到 `.cache/markdown-html-before/`，以 `BROWSER_BEFORE=1` 运行同一脚本复现消息与文件预览直接显示 HTML 文字，结果写入 `before` 目录。组件回归包含安全属性过滤、代码原文、相对路径、候选图失败与迟到读取、实际 README，以及既有的公式、Mermaid 和批注测试。

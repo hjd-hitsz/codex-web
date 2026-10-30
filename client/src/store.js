@@ -5,6 +5,7 @@ import { inputRequestItem } from "./question-state";
 import { readThreadHistory } from "./thread-history";
 import { isCompacting, recoverCompaction } from "./compaction";
 import { annotationMessage } from "./annotations";
+import { mergeUsageUpdate } from "./account-usage.js";
 import {
   readAnnotationDrafts,
   removeSentAnnotations,
@@ -78,6 +79,8 @@ let state = {
   skills: [],
   account: null,
   usage: null,
+  usageLoading: false,
+  usageError: "",
   tokenUsage: {},
   diffs: {},
   turnDiffs: {},
@@ -173,6 +176,9 @@ const deletedThreads = new Set();
 const turnRevisions = new Map();
 const threadNames = new Map();
 let nameRevision = 0;
+let accountRevision = 0,
+  usageRevision = 0,
+  usageRequest = null;
 function preserveThreadName(thread, revision) {
   const update = threadNames.get(thread.id);
   return update?.revision > revision
@@ -225,6 +231,32 @@ export function rpc(method, params = {}, timeout = 120000) {
     socket.send(message);
   });
 }
+export function refreshUsage() {
+  if (!state.connected || (state.account && state.account.type !== "chatgpt"))
+    return Promise.resolve();
+  const connection = socket;
+  if (usageRequest?.connection === connection) return usageRequest.promise;
+  const revision = usageRevision;
+  const request = { connection };
+  usageRequest = request;
+  const current = () =>
+    socket === connection && state.connected && revision === usageRevision;
+  set({ usageLoading: true });
+  request.promise = rpc("account/rateLimits/read", {}, 20000)
+    .then((usage) => {
+      if (current()) set({ usage, usageError: "" });
+    })
+    .catch((error) => {
+      if (current()) set({ usageError: error.message });
+    })
+    .finally(() => {
+      if (usageRequest === request) {
+        usageRequest = null;
+        set({ usageLoading: false });
+      }
+    });
+  return request.promise;
+}
 export function respond(request, result, error) {
   try {
     if (!state.connected || socket.readyState !== WebSocket.OPEN)
@@ -256,6 +288,10 @@ function connect() {
     const m = JSON.parse(e.data);
     if (m.method === "lan/state") {
       const was = state.connected;
+      if (!m.params.ready || !was) {
+        usageRevision++;
+        usageRequest = null;
+      }
       compactionTracking = Object.hasOwn(m.params, "compactions");
       const undoneFiles = { ...state.undoneFiles };
       for (const file of m.params.undoneFiles || [])
@@ -277,6 +313,7 @@ function connect() {
         defaultCwd: m.params.defaultCwd,
         projectlessRoot: m.params.projectlessRoot || "",
         connected: m.params.ready,
+        ...(!m.params.ready && { usageLoading: false }),
         serverVersion: m.params.version || null,
         active: m.params.activeTurns,
         compactions: { ...state.compactions, ...m.params.compactions },
@@ -336,8 +373,11 @@ function connect() {
   connection.onclose = () => {
     if (socket !== connection) return;
     bootRevision++;
+    usageRevision++;
+    usageRequest = null;
     set({
       connected: false,
+      usageLoading: false,
       compactions: Object.fromEntries(
         Object.entries(state.compactions).map(([id, entry]) => [
           id,
@@ -364,6 +404,7 @@ function connect() {
 }
 async function boot() {
   const revision = ++bootRevision;
+  const accountEpoch = accountRevision;
   const epoch = opening;
   const id = state.current?.id || localStorage.getItem("cx-current");
   const current = () => revision === bootRevision && state.connected;
@@ -377,7 +418,7 @@ async function boot() {
     const cfg = config.config || {};
     set({
       models: models.data,
-      account: account.account,
+      ...(accountEpoch === accountRevision && { account: account.account }),
       model:
         state.model ||
         cfg.model ||
@@ -400,9 +441,6 @@ async function boot() {
         set({ draft: localStorage.getItem("cx-draft-new") || "" });
     }
     if (!current()) return;
-    rpc("account/rateLimits/read")
-      .then((usage) => current() && set({ usage }))
-      .catch(() => {});
     if (!initialized) {
       initialized = true;
       loadSkills().catch(() => {});
@@ -679,6 +717,31 @@ function recordTurnTimings(threadId, turns) {
   set({ turnTimings: { ...state.turnTimings, [threadId]: timings } });
 }
 function handle({ method, params: p = {} }) {
+  if (method === "account/rateLimits/updated" && p.rateLimits) {
+    usageRevision++;
+    set({ usage: mergeUsageUpdate(state.usage, p.rateLimits), usageError: "" });
+    return;
+  }
+  if (method === "account/updated") {
+    const revision = ++accountRevision;
+    usageRevision++;
+    usageRequest = null;
+    const connection = socket;
+    set({ account: null, usage: null, usageLoading: false, usageError: "" });
+    rpc("account/read", { refreshToken: false })
+      .then((result) => {
+        if (
+          socket !== connection ||
+          !state.connected ||
+          revision !== accountRevision
+        )
+          return;
+        set({ account: result.account });
+        return refreshUsage();
+      })
+      .catch(() => {});
+    return;
+  }
   if (method === "lan/compaction") {
     if (!deletedThreads.has(p.threadId))
       set({
@@ -761,6 +824,7 @@ function handle({ method, params: p = {} }) {
     set({ active: { ...state.active, [p.threadId]: p.turn.id } });
   }
   if (method === "turn/completed") {
+    refreshUsage();
     const entry = state.compactions[p.threadId];
     if (isCompacting(entry) && entry.turnId === p.turn.id)
       set({

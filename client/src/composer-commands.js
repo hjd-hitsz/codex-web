@@ -39,7 +39,7 @@ export const composerCommands = [
   },
   { id: "project", label: "切换项目", description: "选择本机工作目录" },
   { id: "search", label: "搜索对话", description: "查找已有聊天记录" },
-  { id: "status", label: "账户与用量", description: "查看账户、额度和设置" },
+  { id: "status", label: "设置", description: "查看外观、快捷键和版本信息" },
   {
     id: "fork",
     label: "创建分支",

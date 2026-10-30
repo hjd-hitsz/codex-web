@@ -8,7 +8,6 @@ import {
   FolderPlus,
   ChevronRight,
   Plus,
-  Settings,
   Archive,
   Pin,
   MoreHorizontal,
@@ -24,7 +23,6 @@ import {
   Sun,
   Moon,
   Monitor,
-  RefreshCw,
   MessageSquare,
   LoaderCircle,
   ArrowLeft,
@@ -67,6 +65,7 @@ import { projectGroups, threadTime } from "./thread-order";
 import { VersionDetails } from "./version";
 import { ProjectGroup } from "./project-group";
 import { ResizableSidebar } from "./sidebar-resize";
+import { AccountFooter } from "./account-usage.jsx";
 import { ContextWorkspace } from "./context-panel";
 import { CommandDialog, commandTitles } from "./command-dialog";
 import { isCompacting } from "./compaction";
@@ -340,22 +339,7 @@ function Sidebar() {
           )}
         </div>
         <div className="sidebar-footer">
-          <button
-            className="account-button"
-            onClick={() => set({ modal: { type: "settings" } })}
-          >
-            <span className="avatar">
-              {(s.account?.email || "C").slice(0, 1).toUpperCase()}
-            </span>
-            <span>
-              <b>{s.account?.email?.split("@")[0] || "Codex"}</b>
-              <small>
-                <i className={s.connected ? "online" : ""} />
-                {s.connected ? "已连接本机" : "正在连接…"}
-              </small>
-            </span>
-            <Settings size={17} />
-          </button>
+          <AccountFooter />
         </div>
       </ResizableSidebar>
     </>
@@ -616,7 +600,6 @@ function PluginsDialog() {
 }
 function SettingsDialog() {
   const s = useStore();
-  const limits = s.usage?.rateLimits;
   return (
     <div className="settings-body">
       <h3>外观</h3>
@@ -637,49 +620,6 @@ function SettingsDialog() {
           </button>
         ))}
       </div>
-      <h3>账户与用量</h3>
-      <div className="settings-account">
-        <span className="avatar">
-          {(s.account?.email || "C")[0].toUpperCase()}
-        </span>
-        <div>
-          <strong>
-            {s.account?.email || s.account?.type || "读取账户中…"}
-          </strong>
-          <p>
-            {s.account?.planType || limits?.planType || "本机 Codex 登录账户"}
-          </p>
-        </div>
-        <IconButton
-          icon={RefreshCw}
-          title="刷新用量"
-          onClick={() =>
-            rpc("account/rateLimits/read")
-              .then((usage) => set({ usage }))
-              .catch(report)
-          }
-        />
-      </div>
-      {[limits?.primary, limits?.secondary].filter(Boolean).map((r, i) => (
-        <div className="usage-meter" key={i}>
-          <div>
-            <span>
-              {r.windowDurationMins >= 1440
-                ? Math.round(r.windowDurationMins / 1440) + " 天"
-                : r.windowDurationMins
-                  ? Math.round(r.windowDurationMins / 60) + " 小时"
-                  : "额度"}
-            </span>
-            <b>{Math.max(0, 100 - r.usedPercent)}% 剩余</b>
-          </div>
-          <progress value={Math.max(0, 100 - r.usedPercent)} max="100" />
-          {r.resetsAt && (
-            <small>
-              {new Date(r.resetsAt * 1000).toLocaleString("zh-CN")} 重置
-            </small>
-          )}
-        </div>
-      ))}
       <h3>快捷键</h3>
       <div className="shortcut-list">
         <span>
