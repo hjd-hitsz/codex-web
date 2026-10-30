@@ -1324,7 +1324,7 @@ console.log(
   await act(async () => delay(150));
   assert(visible().includes("检查应用设置"));
   assert(!visible().includes("正在翻译摘要"));
-  assert.equal(batches.length, 4);
+  assert.equal(batches.length, 2);
   await act(async () =>
     history().props.onToggle({ currentTarget: { open: false } }),
   );
@@ -1345,9 +1345,6 @@ console.log(
   assert.deepEqual(batches, [
     ["Reviewing local configuration"],
     ["Inspecting application settings"],
-    ["Reviewing local configuration"],
-    ["Inspecting application settings"],
-    ["Reviewing local configuration"],
     ["Inspecting application settings and storage"],
   ]);
   assert(visible().includes("检查应用设置与存储"));
@@ -1359,7 +1356,7 @@ console.log(
   assert(visible().includes("检查应用设置与存储"));
   assert(!visible().includes("正在翻译摘要"));
   await act(async () => delay(150));
-  assert.equal(batches.length, 8);
+  assert.equal(batches.length, 3);
 
   const updateSummary = (title, body) =>
     act(async () =>
@@ -1405,7 +1402,7 @@ console.log(
     view = create(React.createElement(app.Conversation));
   });
   await act(async () => delay(150));
-  assert.equal(batches.length, completedCount + 2);
+  assert.equal(batches.length, completedCount);
   assert(visible().includes("包含最终细节的摘要"));
   assert(!visible().includes("历史缓存不应展示"));
   assert.equal(storage.has("cx-summary-zh-v1"), false);
@@ -1432,7 +1429,7 @@ console.log(
   await act(async () => view.unmount());
   globalThis.fetch = originalFetch;
   console.log(
-    "PASS 思考标题优先、折叠正文翻译与流式更新、清理旧缓存并在重新打开时重译、旧服务 404 提示与重试恢复",
+    "PASS 思考标题优先、折叠正文翻译与流式更新、清理旧缓存并在重新打开时复用译文、旧服务 404 提示与重试恢复",
   );
 }
 app.set({ draft: "键盘发送验证", items: [] });

@@ -8,10 +8,19 @@ import {
 try {
   localStorage.removeItem("cx-summary-zh-v1");
 } catch {
-  // 浏览器禁用存储时，翻译继续使用内存中的请求队列。
+  // 浏览器禁用本地存储时，继续初始化翻译。
 }
 
-const translator = createSummaryTranslator(translateSummaries);
+let translationStorage;
+try {
+  translationStorage = sessionStorage;
+} catch {
+  // 浏览器禁用会话存储时，译文保留在当前页面内存中。
+}
+const translator = createSummaryTranslator(
+  translateSummaries,
+  translationStorage,
+);
 
 export function useSummaryTranslation(text, priority = "body") {
   const [result, setResult] = useState({});
@@ -19,6 +28,7 @@ export function useSummaryTranslation(text, priority = "body") {
     inFlight = useRef(false),
     lastStarted = useRef(0);
   const required = needsTranslation(text);
+  const cached = translator.getCached(text);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -26,7 +36,13 @@ export function useSummaryTranslation(text, priority = "body") {
     };
   }, []);
   useEffect(() => {
-    if (!required || inFlight.current || result.source === text) return;
+    if (
+      !required ||
+      inFlight.current ||
+      result.source === text ||
+      cached !== undefined
+    )
+      return;
     // 标题立即入队；正文按固定间隔取最新文本，持续流式更新也会推进翻译。
     const timer = setTimeout(
       () => {
@@ -49,12 +65,15 @@ export function useSummaryTranslation(text, priority = "body") {
         : Math.max(0, lastStarted.current + 300 - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [text, priority, required, result]);
+  }, [text, priority, required, result, cached]);
   // 追加中的摘要继续展示已译前缀，新的译文返回后替换，避免反复闪回等待提示。
   const current =
-    result.source === text || (result.value && text.startsWith(result.source))
-      ? result
-      : {};
+    cached !== undefined
+      ? { value: cached }
+      : result.source === text ||
+          (result.value && text.startsWith(result.source))
+        ? result
+        : {};
   return {
     text: required ? (current.value ?? text) : text,
     pending: required && !current.value && !current.error,

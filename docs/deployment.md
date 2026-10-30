@@ -107,7 +107,7 @@ codex-web service restart-when-idle
 - 草稿、置顶、项目快捷列表和主题保存在当前浏览器中。
 - “未分类”对话的文件位于 `CODEX_HOME/codex-web/workspaces/chat-XXXXXX`，首次发送时分配；未设置 `CODEX_HOME` 时位于 `~/.codex/codex-web/workspaces`。迁移电脑时，可随 Codex 配置目录一起保留。
 - 网页配置 `.env` 与新建后端服务使用的 `.env.backend` 位于用户配置目录，迁移时应一并保留；已有后端服务的配置按原部署方式迁移。
-- 摘要翻译由服务所在电脑调用免费、免认证的 TranSmart 服务，浏览器仅访问当前网页服务；待译摘要会发送至 TranSmart，代码、路径和链接在发送前替换为占位符。
+- 摘要翻译由服务所在电脑调用免费、免认证的 TranSmart 服务，浏览器仅访问当前网页服务；待译摘要会发送至 TranSmart，代码、路径和链接在发送前替换为占位符。成功译文缓存在当前标签页会话中，刷新页面和切换对话继续复用，关闭标签页或浏览器后清空。
 
 ## 故障定位
 

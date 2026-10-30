@@ -1,5 +1,6 @@
 const batchLengthLimit = 3000;
 const segmentLengthLimit = 1000;
+const cacheKey = "cx-summary-zh-session-v1";
 
 export function needsTranslation(text) {
   const prose = text.replace(/```[\s\S]*?```|`[^`]*`/g, "");
@@ -9,7 +10,21 @@ export function needsTranslation(text) {
 }
 
 // 标题优先发送；正文合并短时更新，并最多占用一个请求，给后续标题保留容量。
-export function createSummaryTranslator(requestBatch) {
+export function createSummaryTranslator(requestBatch, storage) {
+  const cache = new Map();
+  try {
+    const entries = JSON.parse(storage?.getItem(cacheKey) || "[]");
+    if (Array.isArray(entries))
+      for (const entry of entries)
+        if (
+          Array.isArray(entry) &&
+          entry.length === 2 &&
+          entry.every((text) => typeof text === "string" && text.trim())
+        )
+          cache.set(...entry);
+  } catch {
+    // 会话存储不可读时，继续使用当前页面的内存缓存。
+  }
   const pending = new Map();
   const queue = { title: new Set(), body: new Set() };
   let timer, timerPriority;
@@ -54,9 +69,15 @@ export function createSummaryTranslator(requestBatch) {
         translations.some((text) => typeof text !== "string" || !text.trim())
       )
         throw new Error("翻译结果不完整");
-      batch.forEach((text, index) => {
-        pending.get(text).resolve(translations[index].trim());
-      });
+      batch.forEach((text, index) =>
+        cache.set(text, translations[index].trim()),
+      );
+      try {
+        storage?.setItem(cacheKey, JSON.stringify([...cache]));
+      } catch {
+        // 存储被禁用或已满时，已完成译文仍可在当前页面复用。
+      }
+      batch.forEach((text) => pending.get(text).resolve(cache.get(text)));
     } catch (error) {
       retryAsSingles = batch.length > 1;
       batch.forEach((text) => {
@@ -73,8 +94,12 @@ export function createSummaryTranslator(requestBatch) {
     }
   }
   return {
+    getCached(text) {
+      return cache.get(text);
+    },
     translate(text, priority = "body") {
       if (!needsTranslation(text)) return Promise.resolve(text);
+      if (cache.has(text)) return Promise.resolve(cache.get(text));
       if (pending.has(text)) {
         if (priority === "title" && queue.body.delete(text)) {
           queue.title.add(text);
