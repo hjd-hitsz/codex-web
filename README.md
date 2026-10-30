@@ -17,7 +17,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/desktop-dark.png">
-  <img src="docs/images/desktop-light.png" alt="Codex Web 桌面界面：项目列表、任务对话、文件变更汇总与 Markdown 文件预览" width="1440">
+  <img src="docs/images/desktop-light.png" alt="Codex Web 桌面界面：项目列表、账户额度圆环、任务对话、文件变更汇总与 Markdown 文件预览" width="1440">
 </picture>
 
 <p align="center"><sub>桌面界面 · 演示数据</sub></p>
@@ -27,6 +27,7 @@
 
 <p align="center">
   <img src="docs/images/mobile.png" alt="Codex Web 手机界面：任务对话、文件变更汇总与消息输入框" width="320">
+  <img src="docs/images/mobile-sidebar.png" alt="Codex Web 手机侧栏：项目对话列表与账户额度圆环" width="320">
 </p>
 
 </details>
