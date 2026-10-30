@@ -1524,6 +1524,73 @@ p {
   font-size: 0.923077rem;
   color: var(--fg);
 }
+.tool-values {
+  margin: 0;
+  padding-left: 1.4em;
+}
+.tool-values > li + li {
+  margin-top: 0.3em;
+}
+.tool-fields {
+  margin: 0;
+}
+.tool-fields > div {
+  display: grid;
+  grid-template-columns: minmax(4em, max-content) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.6em;
+  margin-block: 0.25em;
+}
+.tool-fields dt {
+  color: var(--muted);
+  max-width: 12em;
+  overflow-wrap: anywhere;
+}
+.tool-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.tool-section + .tool-section {
+  margin-top: 0.7em;
+}
+.tool-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4em;
+}
+.tool-content > div {
+  max-width: 100%;
+}
+.activity-body .message-link {
+  color: var(--link);
+  overflow-wrap: anywhere;
+}
+.activity-body .message-link:hover {
+  color: var(--link-hover);
+}
+.tool-result > .markdown > p {
+  margin-block: 0.2em;
+}
+.tool-section > small {
+  display: block;
+  margin-bottom: 0.2em;
+}
+.tool-web-details p,
+.tool-fields .markdown > :first-child,
+.tool-fields .markdown > :last-child {
+  margin-block: 0;
+}
+.tool-web-details mark {
+  background: var(--hover);
+  color: var(--fg);
+  border-radius: 0.2em;
+  padding-inline: 0.2em;
+}
+.activity-body audio {
+  max-width: 100%;
+}
 .reasoning-summary > summary {
   list-style: none;
   cursor: pointer;

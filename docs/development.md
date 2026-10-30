@@ -82,6 +82,8 @@ npm run check
 
 视觉调整的浏览器检查使用生产构建与隔离的模拟历史，覆盖正文、代码块、工作过程、输入框草稿、右侧详情、设置弹窗及欢迎页。浅色、深色、跟随系统深色和窄屏分别核对文字对比度、选中状态、换行、控件位置及全宽布局。80%、100%、125%、150% 和 200% 缩放按物理窗口尺寸除以缩放倍数设置 CSS 视口，并同步设置设备像素比，检查发送按钮和底栏的可见性。修改前后采用相同数据和视口截图，图片及构建信息保存在 `.cache` 中。
 
+工具记录浏览器回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium node tests/browser/tool-activities.mjs`。脚本在独立浏览器配置中注入 `tests/fixtures/tool-activities.mjs` 的模拟历史，验证图片直接显示、点击放大与焦点恢复、可读网页操作和工具结果，以及深浅主题、80% 至 200% 缩放与窄屏；截图和构建来源写入 `.cache/tool-activities-browser/after`。修改前对照先把 `client/dist` 与 `build-info.json` 分别复制到 `.cache/tool-activities-before/dist` 与 `.cache/tool-activities-before/build-info.json`，再用 `BROWSER_BEFORE=1` 运行同一脚本，结果写入 `before` 目录。
+
 单独验证发行包时执行：
 
 ```bash

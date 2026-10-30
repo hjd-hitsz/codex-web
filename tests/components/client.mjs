@@ -5,6 +5,7 @@ import { create } from "react-test-renderer";
 import { setTimeout as delay } from "node:timers/promises";
 import { testMermaid } from "./mermaid.mjs";
 import { testMessageImages } from "./message-image.mjs";
+import { testToolActivities } from "./tool-activities.mjs";
 import { testThreadAccess } from "./thread-access.mjs";
 import { testThreadArchive } from "./thread-archive.mjs";
 import { testThreadNames } from "./thread-names.mjs";
@@ -133,6 +134,12 @@ await testMermaid(app);
       app,
       requests,
       (respond) => (responseFor = respond),
+    );
+    await testToolActivities(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
     );
     await testAnnotations(app, requests, (respond) => (responseFor = respond));
     await testFilePanel(app, requests, (respond) => (responseFor = respond));

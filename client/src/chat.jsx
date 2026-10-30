@@ -26,6 +26,7 @@ import {
   AlertCircle,
   RefreshCw,
   Users,
+  ImageIcon,
 } from "lucide-react";
 import {
   useStore,
@@ -56,7 +57,11 @@ import { actionableMessages } from "./message-actions";
 import { reasoningSummaries } from "./reasoning-summary";
 import { useSummaryTranslation } from "./use-summary-translation";
 import { conversationGroups } from "./conversation-groups";
-import { commandDescription } from "./command-description";
+import {
+  ActivityContent,
+  activityLabel,
+  activityHasImage,
+} from "./activity-content";
 import { QuestionRecord, UserInputForm } from "./user-input";
 import { ServiceTierToggle } from "./service-tier-toggle";
 import { ReasoningEffortControl } from "./reasoning-effort";
@@ -102,23 +107,15 @@ function Content({ content, cwd }) {
     </>
   );
 }
-const toolLabels = {
-  commandExecution: "执行命令",
-  fileChange: "修改文件",
-  webSearch: "搜索网页",
-  mcpToolCall: "调用工具",
-  dynamicToolCall: "调用工具",
-  collabAgentToolCall: "协作代理",
-  imageView: "查看图片",
-  contextCompaction: "整理上下文",
-  plan: "计划",
-  enteredReviewMode: "开始代码审查",
-  exitedReviewMode: "代码审查完成",
-};
 function Activity({ item, cwd }) {
-  const [open, setOpen] = useState(false);
+  const [expanded, setOpen] = useState(null);
+  const open = expanded ?? activityHasImage(item);
   const working = ["inProgress", "running"].includes(item.status);
-  const failed = ["failed", "declined"].includes(item.status);
+  const failed =
+    ["failed", "declined"].includes(item.status) ||
+    item.success === false ||
+    Boolean(item.error) ||
+    item.result?.isError === true;
   if (isSubAgentItem(item)) {
     const agents = subAgents([item]);
     return (
@@ -152,14 +149,10 @@ function Activity({ item, cwd }) {
         ? FileCode
         : item.type === "webSearch"
           ? Globe
-          : Sparkles;
-  let label = toolLabels[item.type] || item.type;
-  if (item.type === "commandExecution")
-    label = commandDescription(item.command);
-  if (item.type === "mcpToolCall")
-    label = [item.server, item.tool].filter(Boolean).join(" / ");
-  if (item.type === "webSearch")
-    label = item.query || item.action?.query || label;
+          : activityHasImage(item)
+            ? ImageIcon
+            : Sparkles;
+  const label = activityLabel(item);
   return (
     <div className={"activity " + (open ? "expanded" : "")}>
       <button
@@ -178,7 +171,7 @@ function Activity({ item, cwd }) {
           <small>{item.changes?.length || 0} 个文件</small>
         )}
         {failed ? (
-          <AlertCircle size={14} />
+          <AlertCircle size={14} aria-label="执行失败" />
         ) : item.status === "completed" ? (
           <Check size={13} />
         ) : null}
@@ -220,13 +213,7 @@ function Activity({ item, cwd }) {
           ) : item.type === "plan" ? (
             <RichText text={item.text || ""} cwd={cwd} />
           ) : (
-            <pre>
-              {JSON.stringify(
-                item.result || item.output || item.action || item,
-                null,
-                2,
-              )}
-            </pre>
+            <ActivityContent item={item} cwd={cwd} />
           )}
         </div>
       )}
