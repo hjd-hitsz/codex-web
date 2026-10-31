@@ -795,6 +795,16 @@ function recordTurnTimings(threadId, turns) {
   }
   set({ turnTimings: { ...state.turnTimings, [threadId]: timings } });
 }
+function recordThreadActivity(threadId, turn) {
+  if (deletedThreads.has(threadId)) return;
+  threadOrdering.observe(threadId, turn);
+  const update = (thread) =>
+    thread?.id === threadId ? threadOrdering.apply(thread) : thread;
+  set({
+    threads: sortThreads(state.threads.map(update)),
+    current: update(state.current),
+  });
+}
 function handle({ method, params: p = {} }) {
   if (method === "account/rateLimits/updated" && p.rateLimits) {
     usageRevision++;
@@ -891,15 +901,15 @@ function handle({ method, params: p = {} }) {
           [p.threadId]: { ...entry, status: "running", turnId: p.turn.id },
         },
       });
-    recordTurnTimings(p.threadId, [
-      {
-        ...p.turn,
-        startedAt:
-          p.turn.startedAt ??
-          state.turnTimings[p.threadId]?.[p.turn.id]?.startedAt ??
-          Date.now() / 1000,
-      },
-    ]);
+    const turn = {
+      ...p.turn,
+      startedAt:
+        p.turn.startedAt ??
+        state.turnTimings[p.threadId]?.[p.turn.id]?.startedAt ??
+        Date.now() / 1000,
+    };
+    recordTurnTimings(p.threadId, [turn]);
+    recordThreadActivity(p.threadId, turn);
     set({ active: { ...state.active, [p.threadId]: p.turn.id } });
   }
   if (method === "turn/completed") {
@@ -926,7 +936,7 @@ function handle({ method, params: p = {} }) {
     recordTurnTimings(p.threadId, [
       { ...p.turn, completedAt: p.turn.completedAt ?? Date.now() / 1000 },
     ]);
-    threadOrdering.completed(p.threadId, p.turn);
+    recordThreadActivity(p.threadId, p.turn);
     const active = { ...state.active };
     if (active[p.threadId] === p.turn.id) delete active[p.threadId];
     const unreadCompletions = { ...state.unreadCompletions };
@@ -940,19 +950,9 @@ function handle({ method, params: p = {} }) {
       )
     )
       unreadCompletions[p.threadId] = p.turn.id;
-    const completedAt = p.turn.completedAt;
-    const update = (thread) =>
-      thread?.id === p.threadId && Number.isFinite(completedAt)
-        ? {
-            ...thread,
-            completedAt: Math.max(thread.completedAt ?? 0, completedAt),
-          }
-        : thread;
     set({
       active,
       unreadCompletions,
-      threads: sortThreads(state.threads.map(update)),
-      current: update(state.current),
     });
     if (state.current?.id === p.threadId) {
       if (p.turn.error) report(p.turn.error);
@@ -1159,16 +1159,17 @@ export async function sendMessage(
         ? { threadId: thread.id, expectedTurnId: running, input }
         : params,
     );
-    if (r.turn)
-      recordTurnTimings(thread.id, [
-        {
-          ...r.turn,
-          startedAt:
-            r.turn.startedAt ??
-            state.turnTimings[thread.id]?.[r.turn.id]?.startedAt ??
-            startedAt,
-        },
-      ]);
+    if (r.turn) {
+      const turn = {
+        ...r.turn,
+        startedAt:
+          r.turn.startedAt ??
+          state.turnTimings[thread.id]?.[r.turn.id]?.startedAt ??
+          startedAt,
+      };
+      recordTurnTimings(thread.id, [turn]);
+      recordThreadActivity(thread.id, turn);
+    }
     if (clearDraft) {
       const draftKey = "cx-draft-" + thread.id;
       if (localStorage.getItem(draftKey) === text)

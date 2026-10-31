@@ -1,5 +1,9 @@
 export const threadTime = (thread) =>
-  thread.completedAt ?? thread.createdAt ?? 0;
+  Math.max(
+    thread.activityAt ?? 0,
+    thread.completedAt ?? 0,
+    thread.createdAt ?? 0,
+  );
 export const PROJECTLESS_SOURCE = "codex-web-projectless";
 
 export function sortThreads(threads) {
@@ -57,28 +61,49 @@ export function projectGroups(
   );
 }
 
-// 先读取所有对话元数据再排序，确保最近完成的对话能进入第一页。
+// 先读取所有对话的轮次时间再排序，确保最近有活动的对话能进入第一页。
 export function createThreadOrdering(rpc) {
   const cache = new Map();
   const observed = new Map();
 
-  function completed(threadId, turn) {
-    if (turn.status === "inProgress" || !Number.isFinite(turn.completedAt))
-      return;
-    observed.set(
-      threadId,
-      Math.max(observed.get(threadId) ?? 0, turn.completedAt),
-    );
+  function observe(threadId, turn) {
+    const previous = observed.get(threadId) ?? {};
+    const completedAt =
+      turn.status !== "inProgress" && Number.isFinite(turn.completedAt)
+        ? Math.max(previous.completedAt ?? 0, turn.completedAt)
+        : (previous.completedAt ?? null);
+    observed.set(threadId, {
+      completedAt,
+      activityAt: Math.max(
+        previous.activityAt ?? 0,
+        Number.isFinite(turn.startedAt) ? turn.startedAt : 0,
+        completedAt ?? 0,
+      ),
+    });
     cache.delete(threadId);
   }
 
-  async function completion(thread) {
+  function apply(thread) {
+    if (!thread) return thread;
+    const latest = observed.get(thread.id);
+    return {
+      ...thread,
+      completedAt:
+        latest?.completedAt == null
+          ? (thread.completedAt ?? null)
+          : Math.max(thread.completedAt ?? 0, latest.completedAt),
+      activityAt: Math.max(threadTime(thread), latest?.activityAt ?? 0),
+    };
+  }
+
+  async function activity(thread) {
     const existing = cache.get(thread.id);
     if (existing?.updatedAt === thread.updatedAt) return existing.promise;
     const entry = { updatedAt: thread.updatedAt };
     entry.promise = (async () => {
       let cursor;
-      let latest = null;
+      let completedAt = null;
+      let activityAt = 0;
       do {
         const page = await rpc("thread/turns/list", {
           threadId: thread.id,
@@ -88,12 +113,17 @@ export function createThreadOrdering(rpc) {
           ...(cursor ? { cursor } : {}),
         });
         for (const turn of page.data) {
+          if (Number.isFinite(turn.startedAt))
+            activityAt = Math.max(activityAt, turn.startedAt);
           if (turn.status !== "inProgress" && Number.isFinite(turn.completedAt))
-            latest = Math.max(latest ?? 0, turn.completedAt);
+            completedAt = Math.max(completedAt ?? 0, turn.completedAt);
         }
         cursor = page.nextCursor;
       } while (cursor);
-      return latest;
+      return {
+        completedAt,
+        activityAt: Math.max(activityAt, completedAt ?? 0),
+      };
     })();
     cache.set(thread.id, entry);
     try {
@@ -112,27 +142,20 @@ export function createThreadOrdering(rpc) {
         while (index < threads.length) {
           const position = index++;
           const thread = threads[position];
-          const time = await completion(thread).catch(
-            () => thread.completedAt ?? null,
-          );
-          if (time != null)
-            observed.set(
-              thread.id,
-              Math.max(observed.get(thread.id) ?? 0, time),
-            );
-          result[position] = {
-            ...thread,
-            completedAt: time,
-          };
+          const times = await activity(thread).catch(() => ({
+            completedAt: thread.completedAt ?? null,
+            activityAt: threadTime(thread),
+          }));
+          const merged = apply({ ...thread, ...times });
+          observed.set(thread.id, {
+            completedAt: merged.completedAt,
+            activityAt: merged.activityAt,
+          });
+          result[position] = merged;
         }
       }),
     );
-    return sortThreads(
-      result.map((thread) => ({
-        ...thread,
-        completedAt: observed.get(thread.id) ?? thread.completedAt,
-      })),
-    );
+    return sortThreads(result.map(apply));
   }
 
   async function list(params) {
@@ -157,5 +180,5 @@ export function createThreadOrdering(rpc) {
     observed.delete(id);
   }
 
-  return { list, hydrate, completed, forget };
+  return { list, hydrate, observe, apply, forget };
 }

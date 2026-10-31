@@ -204,7 +204,13 @@ function ThreadRow({ thread }) {
           </span>
         )}
         <span>{title}</span>
-        <small title={thread.completedAt == null ? "创建时间" : "最近完成时间"}>
+        <small
+          title={
+            threadTime(thread) === thread.createdAt
+              ? "创建时间"
+              : "最近活动时间"
+          }
+        >
           {date}
         </small>
       </button>

@@ -1634,6 +1634,25 @@ await app.loadThreads();
 assert.deepEqual(app.get().projectlessDirectories, {});
 assert.equal(app.get().threads[0].id, "sort-64");
 assert.equal(app.get().threads.at(-1).id, "sort-0");
+await socket.emit("turn/started", {
+  threadId: "sort-0",
+  turn: { id: "new-turn", status: "inProgress", startedAt: 400 },
+});
+assert.equal(app.get().threads[0].id, "sort-0");
+assert.equal(app.get().current.activityAt, 400);
+await app.loadThreads();
+assert.equal(app.get().threads[0].id, "sort-0", "旧历史响应保留实时开始时间");
+completions.set("sort-64", 450);
+await socket.emit("turn/completed", {
+  threadId: "sort-64",
+  turn: { id: "other-turn", status: "completed", completedAt: 450 },
+});
+assert.equal(
+  app.get().threads[0].id,
+  "sort-64",
+  "较晚结束的对话超过运行中的对话",
+);
+assert.equal(app.get().active["sort-0"], "new-turn");
 completions.set("sort-0", 500);
 await act(async () =>
   socket.emit("turn/completed", {
@@ -1656,7 +1675,7 @@ assert(
   ),
 );
 console.log(
-  "PASS 完成时间全局排序、分页、打开旧对话顺序稳定、完成事件重排与搜索排序",
+  "PASS 活动时间全局排序、分页、打开旧对话顺序稳定、开始与完成事件重排及搜索排序",
 );
 
 {
