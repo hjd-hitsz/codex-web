@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { fileReferenceInput } from "./user-message.js";
 import {
   FileCode,
   Folder,
@@ -201,11 +202,7 @@ export function useComposerShortcuts(area) {
       store.addAttachment({
         id: store.uid(),
         name: file.name,
-        input: {
-          type: "text",
-          text: `引用本机${file.directory ? "目录" : "文件"}：${file.path}\n请根据任务按需读取。`,
-          text_elements: [],
-        },
+        input: fileReferenceInput(file),
       });
     }
     if (item.kind === "skill") {

@@ -1261,12 +1261,42 @@ p {
   margin-top: 0.307692rem;
 }
 .annotation-card {
-  margin: 0.615385rem 0;
-  padding: 0.923077rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--subtle);
+  margin: 0.384615rem 0;
   min-width: 0;
+}
+.user-reference-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.384615rem;
+}
+.user-file-reference {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.230769rem;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  text-decoration: none;
+  font: inherit;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+  text-align: start;
+}
+.user-file-reference svg {
+  flex-shrink: 0;
+  align-self: center;
+}
+.user-file-reference > span {
+  min-width: 0;
+}
+.annotation-card-label {
+  margin-left: 0.461538rem;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .annotation-editor {
   position: fixed;

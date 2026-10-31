@@ -12,6 +12,7 @@ import { testThreadArchive } from "./thread-archive.mjs";
 import { testThreadNames } from "./thread-names.mjs";
 import { testForkTitles } from "./fork-titles.mjs";
 import { testAnnotations } from "./annotations.mjs";
+import { testUserMessage } from "./user-message.mjs";
 import { testFilePanel } from "./file-panel.mjs";
 import { testFileChanges } from "./file-changes.mjs";
 import { testProcessTiming } from "./process-timing.mjs";
@@ -154,6 +155,7 @@ await testMermaid(app);
       (method, params) => socket.emit(method, params),
     );
     await testAnnotations(app, requests, (respond) => (responseFor = respond));
+    await testUserMessage(app, requests, (respond) => (responseFor = respond));
     await testFilePanel(app, requests, (respond) => (responseFor = respond));
     await testFileChanges(
       app,

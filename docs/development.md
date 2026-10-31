@@ -104,6 +104,10 @@ npm run test:package
 
 该测试在临时 npm prefix 中全局安装打包产物，检查命令入口、静态资源、构建来源、用户配置和服务生成。后端与服务管理命令使用模拟实现。安装优先复用 npm 缓存，缺少包元数据或依赖时访问配置的 registry，因此执行环境需要相应缓存或网络连接。
 
+文件引用与批注展示回归先执行 `npm run build`，再运行 `CHROME_PATH=/path/to/chromium USER_CONTEXT=1 BROWSER_OUTPUT_DIR=.cache/user-message-context/after node tests/browser/annotations.mjs`。脚本使用隔离模拟历史，验证目录与文件引用、目录定位及子文件打开、批注原文收放、文件打开、编辑恢复、移除引用、批注修改与统一提交、刷新，以及深浅主题、80% 至 200% 缩放和窄屏。旧构建通过 `BROWSER_BUILD_DIR` 与 `BROWSER_BUILD_INFO` 指定，以 `BROWSER_BEFORE=1` 复现引用说明外露和编辑时批注协议进入输入框；截图与构建记录写入指定目录。目录跳转的修改前对照使用 `REFERENCE_NAVIGATION_BEFORE=1` 及旧构建，实际点击目录引用后确认面板保持折叠。单元与组件检查覆盖完整封装解析、普通文本保留、批注来源、编辑去重及失败重试，以及目录切换的未保存编辑确认、读取失败、目录与文件的迟到响应隔离。README 现有图片展示普通任务消息，未包含文件引用或批注，图片内容保持适用。
+
+此次交互对照使用本机 Codex VS Code 客户端 `26.1021.22027` 的打包资源：`app-initial` 中的 `Ht`、`Ut` 与 `Sn` 分离上下文和用户请求；`src` 中的 `Su`、`Cu` 恢复文件引用，提交时生成文件上下文并保留正文；`comment-editor` 保留引用标签和路径，并在编辑模式转换时恢复。实际客户端界面控制连接不可用时，以这些实现作为行为证据，客户端运行界面的视觉对照另行记录。提取资源与查验记录仅保存在 `.cache/client-inspection/`。
+
 ## 从源码运行后台服务
 
 在项目根目录执行：

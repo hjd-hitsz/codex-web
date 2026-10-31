@@ -5,11 +5,13 @@ import { inputRequestItem } from "./question-state";
 import { readThreadHistory } from "./thread-history";
 import { isCompacting, recoverCompaction } from "./compaction";
 import { annotationMessage } from "./annotations";
+import { fileReferenceInput, parseUserMessage } from "./user-message.js";
 import { mergeUsageUpdate } from "./account-usage.js";
 import { nextForkTitle } from "./fork-title.js";
 import {
   readAnnotationDrafts,
   removeSentAnnotations,
+  writeAnnotationDrafts,
 } from "./annotation-drafts";
 import {
   createThreadOrdering,
@@ -1457,6 +1459,43 @@ export function addProject(path) {
 }
 export function addAttachment(a) {
   set({ attachments: [...state.attachments, a] });
+}
+export function editUserMessage(item) {
+  const parsed = parseUserMessage(item.content);
+  const threadId = state.current?.id;
+  const annotations = readAnnotationDrafts(threadId);
+  for (const [index, entry] of parsed.annotations.entries()) {
+    const id = `message-${item.id}-${index}`;
+    if (!annotations.some((draft) => draft.id === id))
+      annotations.push({ ...entry, id });
+  }
+  writeAnnotationDrafts(threadId, annotations);
+  const attachments = [
+    ...parsed.references.map((file) => ({
+      name: file.name,
+      input: fileReferenceInput(file),
+    })),
+    ...parsed.attachments.map((input) => ({
+      name: input.name || basename(input.path || "") || "图片附件",
+      ...(input.type === "image" && { preview: input.url }),
+      input,
+    })),
+  ];
+  setDraft(parsed.text);
+  set({
+    attachments: [
+      ...state.attachments,
+      ...attachments
+        .filter(
+          (entry) =>
+            !state.attachments.some(
+              (current) =>
+                JSON.stringify(current.input) === JSON.stringify(entry.input),
+            ),
+        )
+        .map((entry) => ({ ...entry, id: uid() })),
+    ],
+  });
 }
 export async function attachFile(file) {
   if (file.type.startsWith("image/")) {

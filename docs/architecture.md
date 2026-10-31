@@ -81,6 +81,8 @@ Node.js 网页桥接服务
 
 `annotations.js` 解析桌面端的 `# Response annotations:` 前缀和 `<response-annotations>` JSON 数组，每项保留 `text`、可选的 `annotation` 与 `source`。`annotationContexts` 按轮次和前置用户消息为助手回复关联批注，普通补充消息清除后续回复的旧批注上下文；未加载原始用户消息时，编号引用提示加载相关历史。Markdown 插件只将普通文字中的 `:codex-annotation{index="N"}` 转成行内编号，代码、公式和链接保持各自解析规则。`message-annotations.jsx` 展示历史批注卡片及可展开的行内引用，通过稳定的组件与 React Context 保持流式更新期间的展开状态。
 
+`user-message.js` 将用户消息拆为正文、文件引用、批注和其他附件，兼容旧网页的完整引用说明及客户端的 `# Files mentioned by the user:` 文件上下文。消息将正文中的已知 `@名称` 显示为带图标的引用，其余引用显示紧凑标签，完整路径通过悬浮提示查看。文件与目录引用使用带实际路径的链接，统一激活右侧文件面板：文件直接读取内容，目录通过 `panelFile.view: directory` 读取目录并显示文件树。目录切换确认未保存的编辑，成功后清除文件选择及目录筛选；失败保留原视图，目录请求和文件打开目标共同隔离迟到响应。历史批注默认收起原文，摘要显示用户写下的批注。消息目录与复制共用可读内容；编辑入口恢复正文、引用附件、图片、技能与批注草稿，按来源去重并沿用统一提交、失败重试和快照清理流程。模型收到的完整上下文保留在发送数据中，解析只处理完整封装，普通文字和损坏格式继续保留原文。
+
 批注入口仅随有效文字选区显示，选择助手回复文字后可通过选区旁的浮动按钮添加多条批注。监听 `selectionchange` 以支持触屏选区调整，选区通过浏览器 Range 记录原文及 `source.messageId`、`startOffset`、`endOffset`；偏移量以渲染后文字的 UTF-16 位置计算。原文旁的编号与浮层通过 Portal 挂到页面根部，滚动、容器尺寸和页面缩放变化时重新定位，卸载时清理监听与尺寸观察器。编辑器参考客户端的 294 像素宽、22 像素圆角表面，按根字号等比缩放，保留聊天字号；单行约 44 像素高，输入换行或超过单行宽度时自动展开，长内容在输入区内滚动。输入区与浮层共用表面，移除和完成使用带无障碍名称的图标按钮，原文放入浮层的无障碍描述。输入框显示批注列表，可重新打开编辑器或逐条移除；完成、关闭及输入操作只更新草稿。
 
 `annotation-drafts.js` 将同一对话的批注数组存入 `cx-annotation-drafts-<threadId>`，通过共享订阅与浏览器存储事件同步列表，恢复消息时迁移旧的 `cx-annotation-<threadId>-<messageId>` 草稿。`submitComposer` 在点击底部发送按钮或 Ctrl+Enter 时读取批注快照，并将其与正文、附件交给 `sendMessage`；有批注时将正文作为普通请求统一提交。`annotationMessage` 按数组顺序序列化原文、批注及来源，剔除本地草稿 ID，并转义 JSON 中的尖括号。运行中走 `turn/steer`，空闲时走 `turn/start`；写入检查、上下文整理占用及失败处理沿用统一发送流程。成功后仅删除仍与提交快照一致的批注、正文和附件，等待期间新增或修改的内容继续保留。`client/tests/annotations.test.js`、`tests/components/annotations.mjs` 和 `tests/browser/annotations.mjs` 分别验证格式与上下文、草稿及提交生命周期、生产构建下的悬浮布局和实际点击输入。
