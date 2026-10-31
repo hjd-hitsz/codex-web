@@ -932,8 +932,10 @@ export function Composer() {
   const usage = token?.last?.totalTokens;
   const windowSize = token?.modelContextWindow;
   const access = s.threadAccess;
-  const unavailable = s.loading || (access && access.status !== "ready");
   const checking = s.loading || access?.status === "checking";
+  const unavailable =
+    s.loading ||
+    (access && access.status !== "ready" && !(checking && access.background));
   return (
     <div className="composer-wrap">
       {compaction && (
@@ -1130,6 +1132,7 @@ export function Composer() {
                 title="发送消息"
                 disabled={
                   !s.connected ||
+                  checking ||
                   compacting ||
                   s.busy ||
                   (!s.draft.trim() &&

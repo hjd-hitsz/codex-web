@@ -435,8 +435,12 @@ async function boot() {
     if (!current()) return;
     // 初始化只恢复启动时的选择，保留期间新建、发送和切换的对话。
     if (epoch === opening && !state.busy) {
-      if (id)
-        await openThread(id, { preserveServiceTier: state.current?.id === id });
+      if (id && state.current?.id === id && !state.loading)
+        await Promise.all([
+          loadHistory(epoch),
+          refreshThreadAccess({ background: true }),
+        ]);
+      else if (id) await openThread(id);
       else if (!state.current)
         set({ draft: localStorage.getItem("cx-draft-new") || "" });
     }
@@ -595,20 +599,42 @@ export async function openThread(id, { preserveServiceTier = false } = {}) {
     if (epoch === opening) set({ loading: false });
   }
 }
-export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
-  if (state.loading || state.threadAccess?.status === "checking") return false;
+export async function refreshThreadAccess({
+  preserveServiceTier = true,
+  background = false,
+} = {}) {
+  if (
+    state.loading ||
+    (state.threadAccess?.status === "checking" && !background)
+  )
+    return false;
   if (state.threadAccess?.status === "loadError")
     return openThread(state.threadAccess.threadId, { preserveServiceTier });
   const id = state.current?.id;
   if (!id) return false;
   const epoch = opening;
+  const connection = socket;
+  const revision = bootRevision;
   const turnRevision = turnRevisions.get(id);
   const selection = {
     model: state.model,
     effort: state.effort,
     serviceTier: state.serviceTier,
   };
-  const checking = { threadId: id, status: "checking" };
+  const checking = {
+    threadId: id,
+    status: "checking",
+    background:
+      background &&
+      (state.threadAccess?.status === "ready" ||
+        state.threadAccess?.background === true),
+  };
+  const current = () =>
+    epoch === opening &&
+    connection === socket &&
+    revision === bootRevision &&
+    state.connected &&
+    state.threadAccess === checking;
   set({ threadAccess: checking, error: "" });
   let resumed = false;
   try {
@@ -616,7 +642,7 @@ export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
       threadId: id,
       excludeTurns: true,
     });
-    if (epoch !== opening || state.threadAccess !== checking) return false;
+    if (!current()) return false;
     resumed = true;
     set({
       threadAccess: { threadId: id, status: "ready" },
@@ -632,7 +658,7 @@ export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
         }),
     });
   } catch (error) {
-    if (epoch !== opening || state.threadAccess !== checking) return false;
+    if (!current()) return false;
     set({
       threadAccess: {
         threadId: id,
@@ -649,7 +675,14 @@ export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
   const access = state.threadAccess;
   rpc("thread/turns/list", { threadId: id, limit: 20, itemsView: "summary" })
     .then((page) => {
-      if (epoch !== opening || state.threadAccess !== access) return;
+      if (
+        epoch !== opening ||
+        connection !== socket ||
+        revision !== bootRevision ||
+        !state.connected ||
+        state.threadAccess !== access
+      )
+        return;
       const active = { ...state.active };
       const running = page.data.find((t) => t.status === "inProgress");
       if (turnRevisions.get(id) === turnRevision) {
@@ -664,11 +697,22 @@ export async function refreshThreadAccess({ preserveServiceTier = true } = {}) {
 export async function loadHistory(epoch = opening) {
   if (!state.current) return;
   const id = state.current.id;
-  const current = () => epoch === opening && state.current?.id === id;
+  const connection = socket;
+  const revision = bootRevision;
+  const previous = new Map(state.items.map((item) => [item.id, item]));
+  const current = () =>
+    epoch === opening &&
+    state.current?.id === id &&
+    connection === socket &&
+    revision === bootRevision &&
+    state.connected;
   const history = await readThreadHistory(rpc, id, { current });
   if (!current()) return;
   const map = new Map(history.map((item) => [item.id, item]));
-  for (const item of state.items) map.set(item.id, item);
+  // 历史补齐断线期间的更新，读取期间收到的实时记录继续优先。
+  for (const item of state.items)
+    if (!map.has(item.id) || previous.get(item.id) !== item)
+      map.set(item.id, item);
   set({ items: [...map.values()] });
 }
 function put(item) {

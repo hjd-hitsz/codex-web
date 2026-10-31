@@ -16,6 +16,7 @@ import { testFileChanges } from "./file-changes.mjs";
 import { testProcessTiming } from "./process-timing.mjs";
 import { testQuestions } from "./questions.mjs";
 import { testConnectionLifecycle } from "./connection-lifecycle.mjs";
+import { testConnectionRecovery } from "./connection-recovery.mjs";
 import { testAccountUsage } from "./account-usage.mjs";
 import { testHistory } from "./history.mjs";
 import { testHistoryTranslations } from "./history-translations.mjs";
@@ -176,6 +177,12 @@ await testMermaid(app);
       (respond) => (responseFor = respond),
       (method, params) => socket.emit(method, params),
       () => socket,
+    );
+    await testConnectionRecovery(
+      app,
+      requests,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
     );
   } finally {
     responseFor = previousResponse;
