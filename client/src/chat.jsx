@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import {
   useStore,
+  useDraft,
   get,
   set,
   selectModel,
@@ -950,6 +951,7 @@ export function Conversation({ children }) {
 }
 export function Composer() {
   const s = useStore(),
+    draft = useDraft(),
     area = useRef(),
     files = useRef();
   const annotationDrafts = useAnnotationDrafts(s.current?.id);
@@ -967,7 +969,7 @@ export function Composer() {
       area.current.style.height =
         Math.min(area.current.scrollHeight, 180) + "px";
     }
-  }, [s.draft, s.threadAccess?.status]);
+  }, [draft, s.threadAccess?.status]);
   async function add(files) {
     for (const file of files)
       try {
@@ -1020,7 +1022,7 @@ export function Composer() {
                   ? "历史记录可正常查看。点击“重试”刷新状态，恢复后即可继续发送。"
                   : access?.message}
             </p>
-            {(s.draft || s.attachments.length > 0) && (
+            {(draft || s.attachments.length > 0) && (
               <small>草稿和附件已保留。</small>
             )}
           </div>
@@ -1083,7 +1085,7 @@ export function Composer() {
                   ? "补充说明，或等待 Codex 完成…"
                   : "描述任务，@ 引用文件，/ 使用命令…"
             }
-            value={s.draft}
+            value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
               shortcuts.detect(e.target.value, e.target.selectionStart);
@@ -1183,7 +1185,7 @@ export function Composer() {
                   checking ||
                   compacting ||
                   s.busy ||
-                  (!s.draft.trim() &&
+                  (!draft.trim() &&
                     !s.attachments.length &&
                     !annotationDrafts.length)
                 }

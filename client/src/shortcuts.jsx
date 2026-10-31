@@ -54,6 +54,7 @@ const commands = composerCommands.map((command) => ({
 }));
 export function useComposerShortcuts(area) {
   const s = store.useStore();
+  const draft = store.useDraft();
   const [trigger, setTrigger] = useState(null),
     [files, setFiles] = useState([]),
     [index, setIndex] = useState(0),
@@ -129,8 +130,8 @@ export function useComposerShortcuts(area) {
     return () => clearTimeout(timer);
   }, [trigger?.kind, trigger?.query, s.cwd]);
   useEffect(() => {
-    if (!s.draft) setTrigger(null);
-  }, [s.draft]);
+    if (!draft) setTrigger(null);
+  }, [draft]);
   useEffect(() => {
     setTrigger(null);
   }, [s.current?.id]);

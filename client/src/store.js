@@ -104,6 +104,12 @@ let state = {
   sidebar: false,
   modal: null,
 };
+const { draft: initialDraft, ...initialSharedState } = state;
+let sharedState = initialSharedState;
+function subscribe(callback) {
+  listeners.add(callback);
+  return () => listeners.delete(callback);
+}
 export function set(patch) {
   if (patch.active) {
     const unreadCompletions = {
@@ -129,6 +135,14 @@ export function set(patch) {
       ),
     );
   state = { ...state, ...patch };
+  // 输入草稿单独订阅，避免每次输入重新渲染历史、侧栏与文件面板。
+  const { draft, ...sharedPatch } = patch;
+  if (
+    Object.keys(sharedPatch).some(
+      (key) => !Object.is(sharedState[key], sharedPatch[key]),
+    )
+  )
+    sharedState = { ...sharedState, ...sharedPatch };
   for (const fn of listeners) fn();
 }
 export function get() {
@@ -165,13 +179,10 @@ export function selectModel(model) {
   });
 }
 export function useStore() {
-  return useSyncExternalStore(
-    (cb) => {
-      listeners.add(cb);
-      return () => listeners.delete(cb);
-    },
-    () => state,
-  );
+  return useSyncExternalStore(subscribe, () => sharedState);
+}
+export function useDraft() {
+  return useSyncExternalStore(subscribe, () => state.draft);
 }
 export function onEvent(fn) {
   eventListeners.add(fn);

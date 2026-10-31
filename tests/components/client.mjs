@@ -24,6 +24,7 @@ import { testAccountUsage } from "./account-usage.mjs";
 import { testHistory } from "./history.mjs";
 import { testHistoryTranslations } from "./history-translations.mjs";
 import { testConversationScroll } from "./conversation-scroll.mjs";
+import { testComposerPerformance } from "./composer-performance.mjs";
 import { testMessageNavigation } from "./message-navigation.mjs";
 import { testContextPanel } from "./context-panel.mjs";
 import { testCommands } from "./commands.mjs";
@@ -117,6 +118,7 @@ await testMermaid(app);
       (method, params) => socket.emit(method, params),
     );
     await testConversationScroll(app);
+    await testComposerPerformance(app);
     await testHistoryTranslations(app);
     await testMessageNavigation(app);
     await testContextPanel(
