@@ -6,6 +6,7 @@ import { readThreadHistory } from "./thread-history";
 import { isCompacting, recoverCompaction } from "./compaction";
 import { annotationMessage } from "./annotations";
 import { mergeUsageUpdate } from "./account-usage.js";
+import { nextForkTitle } from "./fork-title.js";
 import {
   readAnnotationDrafts,
   removeSentAnnotations,
@@ -1266,6 +1267,23 @@ export async function deleteThread(thread) {
   await loadThreads().catch(report);
 }
 export async function fork(thread = state.current, lastTurnId) {
+  const revision = nameRevision;
+  const records = [];
+  for (const archived of [false, true]) {
+    let cursor;
+    do {
+      const page = await rpc("thread/list", {
+        archived,
+        limit: 100,
+        ...(cursor ? { cursor } : {}),
+      });
+      records.push(...page.data);
+      cursor = page.nextCursor;
+    } while (cursor);
+  }
+  const threads = records.map((record) => preserveThreadName(record, revision));
+  const source = threads.find((record) => record.id === thread.id) || thread;
+  const name = nextForkTitle(source, threads);
   const r = await rpc("thread/fork", {
     threadId: thread.id,
     excludeTurns: true,
@@ -1278,8 +1296,9 @@ export async function fork(thread = state.current, lastTurnId) {
   persist("cx-pending-forks", pendingForks);
   await rpc("thread/name/set", {
     threadId: r.thread.id,
-    name: titleOf(thread).slice(0, 70) + " (分支)",
+    name,
   });
+  updateThreadName(r.thread.id, name);
   await openThread(r.thread.id);
   await loadThreads();
   notice("已创建对话分支");

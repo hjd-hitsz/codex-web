@@ -10,6 +10,7 @@ import { testToolActivities } from "./tool-activities.mjs";
 import { testThreadAccess } from "./thread-access.mjs";
 import { testThreadArchive } from "./thread-archive.mjs";
 import { testThreadNames } from "./thread-names.mjs";
+import { testForkTitles } from "./fork-titles.mjs";
 import { testAnnotations } from "./annotations.mjs";
 import { testFilePanel } from "./file-panel.mjs";
 import { testFileChanges } from "./file-changes.mjs";
@@ -134,6 +135,7 @@ await testMermaid(app);
       (respond) => (responseFor = respond),
       (method, params) => socket.emit(method, params),
     );
+    await testForkTitles(app, requests, (respond) => (responseFor = respond));
     await testThreadNames(
       app,
       (respond) => (responseFor = respond),
