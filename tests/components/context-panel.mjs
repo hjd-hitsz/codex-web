@@ -389,6 +389,49 @@ export async function testContextPanel(app, requests, setResponse, emit) {
     assert.equal(tools().props["data-open"], true);
     await act(async () => app.set({ contextOpen: null }));
     assert.equal(toggle().props["aria-expanded"], false);
+    await act(async () => app.set({ current: parent, cwd: parent.cwd }));
+    await click("文件", tools());
+    assert.equal(
+      view.root.findByProps({ "aria-label": "文件源码" }).props.value,
+      "文件未保存内容",
+    );
+    await act(async () => app.newChat(undefined, { reuseDirectory: true }));
+    assert.equal(app.get().current, null);
+    assert.equal(app.get().contextOpen, false);
+    assert.equal(app.get().panel, null);
+    assert.equal(app.get().panelFile, null);
+    assert.equal(app.get().panelAgent, null);
+    await click("展开对话详情", tools());
+    assert(view.root.findByProps({ className: "context-card" }));
+    await click("文件", tools());
+    assert.equal(
+      view.root.findAllByProps({ "aria-label": "文件源码" }).length,
+      0,
+    );
+    assert.equal(
+      view.root.findAllByProps({ className: "file-diff-view" }).length,
+      0,
+    );
+    hold = false;
+    await act(async () => app.openThread(parent.id));
+    assert.equal(app.get().contextOpen, false);
+    await click("文件", tools());
+    assert.equal(
+      view.root.findByProps({ "aria-label": "文件源码" }).props.value,
+      "文件未保存内容",
+      "回到原对话继续编辑未保存文件",
+    );
+    for (const panel of ["files", "changes", "agent"]) {
+      await act(async () => {
+        app.set({ panel, panelAgent: { id: "agent-a", parentId: parent.id } });
+        app.set({ panelFile: "/fixture/pending.txt" });
+        app.newChat(parent.cwd);
+      });
+      assert.equal(app.get().contextOpen, false, panel);
+      assert.equal(app.get().panel, null, panel);
+      assert.equal(app.get().panelFile, null, panel);
+      assert.equal(app.get().panelAgent, null, panel);
+    }
   } finally {
     await act(async () => view?.unmount());
     assert.equal(mediaListeners.size, 0);

@@ -231,9 +231,13 @@ export function FilePanel() {
     [fileKind, setFileKind] = useState(null),
     [preview, setPreview] = useState(true),
     [change, setChange] = useState(null),
-    [fileChange, setFileChange] = useState(null);
+    [fileChange, setFileChange] = useState(null),
+    [fileThreadId, setFileThreadId] = useState(s.current?.id),
+    [changeThreadId, setChangeThreadId] = useState(s.current?.id);
   const opening = useRef(0);
   const directoryOpening = useRef(0);
+  const fileVisible = file && fileThreadId === s.current?.id;
+  const changeVisible = change && changeThreadId === s.current?.id;
   const markdownFile = file && isMarkdownFile(file);
   const changesMatch = useMemo(
     () =>
@@ -254,6 +258,7 @@ export function FilePanel() {
     const target = navigate ? ++opening.current : null;
     const current = () =>
       request === directoryOpening.current &&
+      get().current?.id === s.current?.id &&
       (target === null || target === opening.current);
     setLoading(true);
     try {
@@ -288,6 +293,7 @@ export function FilePanel() {
   }
   async function open(p, selectedChange = null) {
     if (file === p && text !== original) {
+      setFileThreadId(s.current?.id);
       setFileChange(selectedChange);
       if (selectedChange) setPreview(false);
       returnToFile();
@@ -302,6 +308,7 @@ export function FilePanel() {
     const request = ++opening.current;
     const presentation = filePresentation(p);
     if (presentation) {
+      setFileThreadId(s.current?.id);
       setFileKind(presentation.kind);
       setFile(p);
       setText("");
@@ -312,13 +319,15 @@ export function FilePanel() {
     }
     try {
       const r = await rpc("fs/readFile", { path: p });
-      if (request !== opening.current) return;
+      if (request !== opening.current || get().current?.id !== s.current?.id)
+        return;
       const body = decodeTextFile(
         Uint8Array.from(atob(r.dataBase64), (character) =>
           character.charCodeAt(0),
         ),
       );
       setFileKind(body === null ? "download" : null);
+      setFileThreadId(s.current?.id);
       setFile(p);
       setText(body ?? "");
       setOriginal(body ?? "");
@@ -326,12 +335,16 @@ export function FilePanel() {
       setChange(null);
       setFileChange(body === null ? null : selectedChange);
     } catch (e) {
-      if (request === opening.current) report(e);
+      if (request === opening.current && get().current?.id === s.current?.id)
+        report(e);
     }
   }
   useEffect(() => {
+    opening.current++;
+    directoryOpening.current++;
+    setFilter("");
     if (s.connected) load(s.cwd);
-  }, [s.cwd, s.connected]);
+  }, [s.current?.id, s.cwd, s.connected]);
   useEffect(() => {
     if (text === original) return;
     const warn = (e) => {
@@ -350,6 +363,7 @@ export function FilePanel() {
       else {
         opening.current++;
         setChange(s.panelFile);
+        setChangeThreadId(s.current?.id);
       }
       set({ panelFile: null });
     }
@@ -362,24 +376,26 @@ export function FilePanel() {
     [],
   );
   async function save() {
+    const request = opening.current;
     try {
       await rpc("fs/writeFile", { path: file, dataBase64: b64encode(text) });
+      if (request !== opening.current) return;
       setOriginal(text);
       notice("文件已保存");
     } catch (e) {
-      report(e);
+      if (request === opening.current) report(e);
     }
   }
   useEffect(() => {
     const key = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s" && file) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s" && fileVisible) {
         e.preventDefault();
-        if (!change && !fileKind) save();
+        if (!changeVisible && !fileKind) save();
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [file, text, change, fileKind]);
+  }, [file, text, changeVisible, fileVisible, fileKind]);
   return (
     <>
       <div className="panel-heading">
@@ -399,12 +415,12 @@ export function FilePanel() {
           />
         </div>
       </div>
-      {change ? (
+      {changeVisible ? (
         <>
           <div className="file-tab">
             <button onClick={returnToFile}>
               <ChevronRight size={14} style={{ transform: "rotate(180deg)" }} />
-              {file ? "返回文件" : "文件列表"}
+              {fileVisible ? "返回文件" : "文件列表"}
             </button>
             <span title={change.path}>{basename(change.path)} · 变更</span>
             <IconButton
@@ -437,7 +453,7 @@ export function FilePanel() {
             <span>本轮变更</span>
           </div>
         </>
-      ) : file ? (
+      ) : fileVisible ? (
         <>
           <div className="file-tab">
             <button

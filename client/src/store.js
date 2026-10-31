@@ -582,6 +582,8 @@ export function newChat(
     loading: false,
     threadAccess: null,
     sidebar: false,
+    contextOpen: false,
+    panelFile: null,
   });
 }
 export async function openThread(id, { preserveServiceTier = false } = {}) {
@@ -592,7 +594,11 @@ export async function openThread(id, { preserveServiceTier = false } = {}) {
     error: "",
     threadAccess: { threadId: id, status: "loading" },
     sidebar: false,
-    ...(state.current?.id !== id && { attachments: [] }),
+    ...(state.current?.id !== id && {
+      attachments: [],
+      contextOpen: false,
+      panelFile: null,
+    }),
   });
   try {
     const r = await rpc("thread/read", { threadId: id, includeTurns: false });

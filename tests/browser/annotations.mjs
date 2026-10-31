@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { contextItems, verifyUserContext } from "./user-message-context.mjs";
+import { contextResetItems, verifyContextReset } from "./context-reset.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const output =
@@ -182,7 +183,7 @@ const server = http.createServer(async (request, response) => {
         .toString()
         .replace(
           "<head>",
-          `<head><script>(${fixture.toString()})(${process.env.USER_CONTEXT === "1" ? JSON.stringify(contextItems) : "null"})</script>`,
+          `<head><script>(${fixture.toString()})(${process.env.CONTEXT_RESET === "1" ? JSON.stringify(contextResetItems) : process.env.USER_CONTEXT === "1" ? JSON.stringify(contextItems) : "null"})</script>`,
         );
     response
       .writeHead(200, {
@@ -383,8 +384,12 @@ async function runScenario() {
   await waitFor(
     `document.querySelector('textarea[aria-label="消息"]') && document.querySelector('.assistant-message')`,
   );
-  if (process.env.USER_CONTEXT === "1") {
-    await verifyUserContext({
+  if (process.env.USER_CONTEXT === "1" || process.env.CONTEXT_RESET === "1") {
+    const verify =
+      process.env.CONTEXT_RESET === "1"
+        ? verifyContextReset
+        : verifyUserContext;
+    await verify({
       evaluate,
       page,
       waitFor,
