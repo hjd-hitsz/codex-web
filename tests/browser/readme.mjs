@@ -260,6 +260,7 @@ const child = spawn(
   process.env.CHROME_PATH,
   [
     "--headless",
+    "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
     "--no-sandbox",
     "--disable-gpu",
     "--disable-dev-shm-usage",
@@ -473,6 +474,7 @@ try {
     deviceScaleFactor: 2,
     mobile: true,
   });
+  await page("Emulation.setTouchEmulationEnabled", { enabled: true });
   await pause(250);
   await inspect("mobile");
   await click('.topbar button[title="显示侧栏"]');

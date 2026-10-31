@@ -60,6 +60,7 @@ let state = {
   turns: {},
   turnTimings: {},
   active: {},
+  unreadCompletions: {},
   compactions: saved("cx-compactions", {}),
   questions: [],
   models: [],
@@ -104,6 +105,13 @@ let state = {
   modal: null,
 };
 export function set(patch) {
+  if (patch.active) {
+    const unreadCompletions = {
+      ...(patch.unreadCompletions ?? state.unreadCompletions),
+    };
+    for (const id of Object.keys(patch.active)) delete unreadCompletions[id];
+    patch = { ...patch, unreadCompletions };
+  }
   if (patch.contextOpen === false)
     patch = { ...patch, panel: null, panelAgent: null };
   else if (patch.panel && patch.contextOpen === undefined)
@@ -125,6 +133,19 @@ export function set(patch) {
 }
 export function get() {
   return state;
+}
+let readingThreadId = null;
+export function setReadingThread(id) {
+  readingThreadId =
+    state.current?.id === id &&
+    !state.loading &&
+    state.threadAccess?.status !== "loadError"
+      ? id
+      : null;
+  if (!readingThreadId || !state.unreadCompletions[id]) return;
+  const unreadCompletions = { ...state.unreadCompletions };
+  delete unreadCompletions[id];
+  set({ unreadCompletions });
 }
 export function openSubAgent(agent) {
   set({
@@ -871,6 +892,7 @@ function handle({ method, params: p = {} }) {
     set({ active: { ...state.active, [p.threadId]: p.turn.id } });
   }
   if (method === "turn/completed") {
+    const observedTurn = state.active[p.threadId] === p.turn.id;
     refreshUsage();
     const entry = state.compactions[p.threadId];
     if (isCompacting(entry) && entry.turnId === p.turn.id)
@@ -896,6 +918,17 @@ function handle({ method, params: p = {} }) {
     threadOrdering.completed(p.threadId, p.turn);
     const active = { ...state.active };
     if (active[p.threadId] === p.turn.id) delete active[p.threadId];
+    const unreadCompletions = { ...state.unreadCompletions };
+    if (
+      observedTurn &&
+      p.turn.status === "completed" &&
+      !(
+        readingThreadId === p.threadId &&
+        state.current?.id === p.threadId &&
+        !state.loading
+      )
+    )
+      unreadCompletions[p.threadId] = p.turn.id;
     const completedAt = p.turn.completedAt;
     const update = (thread) =>
       thread?.id === p.threadId && Number.isFinite(completedAt)
@@ -906,6 +939,7 @@ function handle({ method, params: p = {} }) {
         : thread;
     set({
       active,
+      unreadCompletions,
       threads: sortThreads(state.threads.map(update)),
       current: update(state.current),
     });
@@ -1204,10 +1238,13 @@ function syncArchivedThread(id) {
     localStorage.removeItem("cx-current");
   const active = { ...state.active };
   delete active[id];
+  const unreadCompletions = { ...state.unreadCompletions };
+  delete unreadCompletions[id];
   const compactions = { ...state.compactions };
   delete compactions[id];
   set({
     active,
+    unreadCompletions,
     compactions,
     threads: state.archived
       ? state.threads
@@ -1240,6 +1277,7 @@ function forgetThread(id) {
   const patch = {};
   for (const key of [
     "active",
+    "unreadCompletions",
     "compactions",
     "turns",
     "turnTimings",

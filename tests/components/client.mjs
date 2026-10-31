@@ -9,6 +9,7 @@ import { testMarkdownHtml } from "./markdown-html.mjs";
 import { testToolActivities } from "./tool-activities.mjs";
 import { testThreadAccess } from "./thread-access.mjs";
 import { testThreadArchive } from "./thread-archive.mjs";
+import { testThreadUnread } from "./thread-unread.mjs";
 import { testThreadNames } from "./thread-names.mjs";
 import { testForkTitles } from "./fork-titles.mjs";
 import { testAnnotations } from "./annotations.mjs";
@@ -137,6 +138,11 @@ await testMermaid(app);
       (method, params) => socket.emit(method, params),
     );
     await testForkTitles(app, requests, (respond) => (responseFor = respond));
+    await testThreadUnread(
+      app,
+      (respond) => (responseFor = respond),
+      (method, params) => socket.emit(method, params),
+    );
     await testThreadNames(
       app,
       (respond) => (responseFor = respond),
